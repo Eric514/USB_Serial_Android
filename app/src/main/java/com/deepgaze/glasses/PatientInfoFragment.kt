@@ -4,6 +4,8 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ArrayAdapter
+import android.widget.Spinner
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
@@ -15,6 +17,9 @@ class PatientInfoFragment : Fragment() {
 
     private var _binding: FragmentPatientInfoBinding? = null
     private val binding get() = _binding!!
+
+    private lateinit var genderSpinner: Spinner
+    private var selectedGender: String = ""
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -28,6 +33,7 @@ class PatientInfoFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+        setupGenderSpinner()
         setDefaultDateTime()
         setupButtons()
 
@@ -44,7 +50,7 @@ class PatientInfoFragment : Fragment() {
             if (patientId.isNotEmpty()) {
                 binding.etPatientId.setText(patientId)
                 binding.etPatientName.setText(patientName)
-                binding.etGender.setText(gender)
+                setGenderSpinnerSelection(gender)
                 binding.etAge.setText(age)
                 binding.etDate.setText(date)
                 binding.etTime.setText(time)
@@ -52,6 +58,45 @@ class PatientInfoFragment : Fragment() {
             }
         }
     }
+
+    private fun setupGenderSpinner() {
+        genderSpinner = binding.spinnerGender
+
+        // Create an adapter for the spinner
+        val adapter = ArrayAdapter.createFromResource(
+            requireContext(),
+            R.array.gender_options,
+            android.R.layout.simple_spinner_item
+        )
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        genderSpinner.adapter = adapter
+
+        // Set default selection to "Select Gender"
+        genderSpinner.setSelection(0)
+    }
+
+    private fun setGenderSpinnerSelection(gender: String) {
+        if (gender.isNotEmpty()) {
+            val positions = mapOf(
+                "Male" to 1,
+                "Female" to 2,
+                "Other" to 3,
+                "Prefer not to say" to 4
+            )
+            val position = positions[gender] ?: 0
+            genderSpinner.setSelection(position)
+        }
+    }
+
+    private fun getSelectedGender(): String {
+        val position = genderSpinner.selectedItemPosition
+        return if (position > 0) {  // Skip the first item (Select Gender)
+            genderSpinner.selectedItem.toString()
+        } else {
+            ""  // Return empty string if no valid gender selected
+        }
+    }
+
 
     private fun setDefaultDateTime() {
         val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
@@ -70,6 +115,7 @@ class PatientInfoFragment : Fragment() {
     private fun saveAndNavigate() {
         val patientId = binding.etPatientId.text.toString().trim()
         val patientName = binding.etPatientName.text.toString().trim()
+        val gender = getSelectedGender()
 
         if (patientId.isEmpty() || patientName.isEmpty()) {
             Toast.makeText(requireContext(), "Please enter Patient ID and Name", Toast.LENGTH_SHORT).show()
@@ -81,7 +127,7 @@ class PatientInfoFragment : Fragment() {
         val bundle = Bundle().apply {
             putString("patientId", patientId)
             putString("patientName", patientName)
-            putString("gender", binding.etGender.text.toString())
+            putString("gender", gender)
             putString("age", binding.etAge.text.toString())
             putString("date", binding.etDate.text.toString())
             putString("time", binding.etTime.text.toString())

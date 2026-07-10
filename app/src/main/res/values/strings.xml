@@ -1,3 +1,10 @@
 <resources>
     <string name="app_name">USB Serial</string>
+    <string-array name="gender_options">
+        <item>Select Gender</item>
+        <item>Male</item>
+        <item>Female</item>
+        <item>Other</item>
+        <item>Prefer not to say</item>
+    </string-array>
 </resources>
