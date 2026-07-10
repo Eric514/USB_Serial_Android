@@ -1,0 +1,21 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+
+    <!-- USB Icon Background Circle -->
+    <path
+        android:fillColor="#2196F3"
+        android:pathData="M24,4 C13,4 4,13 4,24 C4,35 13,44 24,44 C35,44 44,35 44,24 C44,13 35,4 24,4 Z"/>
+
+    <!-- USB Symbol -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M24,10 L24,16 M24,20 L24,38 M20,26 L24,22 L28,26 M24,16 L20,20 M24,16 L28,20"/>
+
+    <!-- USB text -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M17,32 L22,32 L22,34 L19.5,34 L22.5,37.5 L20.5,39.5 L17,35.5 L17,39 L15,39 L15,32 Z"/>
+</vector>

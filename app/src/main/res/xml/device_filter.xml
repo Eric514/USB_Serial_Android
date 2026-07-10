@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Allow your app to work with any USB device. -->
+    <usb-device />
+</resources>
