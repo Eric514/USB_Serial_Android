@@ -90,28 +90,20 @@
                     android:orientation="horizontal"
                     android:layout_marginBottom="12dp">
 
-                    <com.google.android.material.textfield.TextInputLayout
+                    <Spinner
+                        android:id="@+id/spinnerGender"
                         android:layout_width="0dp"
-                        android:layout_height="wrap_content"
+                        android:layout_height="match_parent"
                         android:layout_weight="1"
-                        android:layout_marginEnd="8dp"
-                        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
-
-                        <Spinner
-                            android:id="@+id/spinnerGender"
-                            android:layout_width="match_parent"
-                            android:layout_height="match_parent"
-                            android:entries="@array/gender_options"
-                            android:prompt="@array/gender_options"/>
-
-                    </com.google.android.material.textfield.TextInputLayout>
+                        android:entries="@array/gender_options"
+                        android:prompt="@array/gender_options" />
 
                     <com.google.android.material.textfield.TextInputLayout
+                        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1"
                         android:layout_marginStart="8dp"
-                        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+                        android:layout_weight="1">
 
                         <com.google.android.material.textfield.TextInputEditText
                             android:id="@+id/etAge"
