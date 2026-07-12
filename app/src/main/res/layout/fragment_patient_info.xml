@@ -93,20 +93,20 @@
                     <FrameLayout
                         android:layout_width="0dp"
                         android:layout_height="match_parent"
-                        android:layout_marginTop="8dp"
+                        android:layout_marginTop="4dp"
                         android:layout_weight="1">
 
                         <TextView
                             android:id="@+id/textView"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="@string/gender_spinner_hint" />
+                            android:text="@string/gender_spinner_hint"
+                            android:textSize="12sp" />
 
                         <Spinner
                             android:id="@+id/spinnerGender"
                             android:layout_width="match_parent"
                             android:layout_height="match_parent"
-                            android:layout_marginTop="8dp"
                             android:entries="@array/gender_options"
                             android:prompt="@array/gender_options" />
                     </FrameLayout>
