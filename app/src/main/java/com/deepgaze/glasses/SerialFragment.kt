@@ -25,10 +25,13 @@ import com.hoho.android.usbserial.driver.UsbSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import com.hoho.android.usbserial.driver.UsbSerialProber
 import com.hoho.android.usbserial.util.SerialInputOutputManager
-import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.Executors
-
+import com.google.gson.Gson
+import java.io.File
+import java.io.FileWriter
+import java.text.SimpleDateFormat
+import java.util.*
 class SerialFragment : Fragment() {
     private var _binding: FragmentSerialBinding? = null
     private val binding get() = _binding!!
@@ -46,6 +49,18 @@ class SerialFragment : Fragment() {
     private var dataCounter = 0
     private val handler = Handler(Looper.getMainLooper())
     private val dateFormat = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault())
+
+    private val dataBuffer = StringBuilder()
+    private val messageQueue = mutableListOf<String>()
+    private var isProcessingQueue = false
+    private var lastDataTime = 0L
+    private val TIMEOUT_MS = 100L // Time to wait for complete message
+    private val MIN_MESSAGE_LENGTH = 2 // Minimum characters for a valid message
+    private val MAX_BUFFER_SIZE = 1024 * 1024 // 1MB max buffer size
+
+    // Message delimiters - customize based on your device
+    private val MESSAGE_DELIMITERS = listOf("\n", "\r\n", "\r", ";", "\t")
+    private var customDelimiter: String? = null
 
     // Patient data
     private var patientId = ""
@@ -65,7 +80,123 @@ class SerialFragment : Fragment() {
     private lateinit var ACTION_USB_PERMISSION: String
     private val TAG = "SerialFragment"
 
+    //Data Save to Data Manager
+    private lateinit var dataManager: DataManager
+    private var isSavingEnabled = true
+    private var currentDataBuffer = StringBuilder()
+    private var lastSaveTime = 0L
+    private val SAVE_INTERVAL_MS = 5000L // Save at most every 5 seconds
+
     // ==================== DECLARE ALL FUNCTIONS FIRST ====================
+
+    private fun processIncomingData(data: ByteArray) {
+        try {
+            val text = String(data, Charsets.UTF_8)
+            Log.d(TAG, "Raw data received: $text")
+
+            // Append to buffer
+            dataBuffer.append(text)
+
+            // Check buffer size - prevent memory issues
+            if (dataBuffer.length > MAX_BUFFER_SIZE) {
+                Log.w(TAG, "Buffer size exceeded, clearing")
+                dataBuffer.clear()
+                return
+            }
+
+            // Try to extract complete messages
+            extractMessages()
+
+            // If we have data in buffer and no newline yet, wait for more data
+            if (dataBuffer.isNotEmpty()) {
+                Log.d(TAG, "Buffer has ${dataBuffer.length} chars waiting for complete message")
+                // Schedule a timeout to process incomplete data
+                scheduleBufferTimeout()
+            }
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error processing data", e)
+        }
+    }
+
+    private fun extractMessages() {
+        if (dataBuffer.isEmpty()) return
+
+        var processed = 0
+
+        // Try each delimiter
+        for (delimiter in MESSAGE_DELIMITERS) {
+            var index: Int
+
+            while (dataBuffer.indexOf(delimiter).also { index = it } != -1) {
+                // Extract message including delimiter
+                val endPos = index + delimiter.length
+                val message = dataBuffer.substring(0, endPos).trim()
+
+                // Remove from buffer
+                dataBuffer.delete(0, endPos)
+
+                // Process if it's a valid message
+                if (message.isNotEmpty() && message.length >= MIN_MESSAGE_LENGTH) {
+                    Log.d(TAG, "Complete message extracted: $message")
+                    handleCompleteMessage(message)
+                    processed++
+                } else if (message.isNotEmpty()) {
+                    Log.d(TAG, "Message too short, ignoring: $message")
+                }
+            }
+        }
+    }
+
+    /**
+     * Handle a complete message
+     */
+    private fun handleCompleteMessage(message: String) {
+        // Clean the message - remove extra whitespace
+        val cleanMessage = message.trim()
+
+        // Add to display
+        displayData(cleanMessage)
+
+        // Save to storage
+        saveSerialData(cleanMessage)
+
+        // Update counter
+        dataCounter++
+    }
+
+    /**
+     * Schedule a timeout to process any pending buffer data
+     */
+    private fun scheduleBufferTimeout() {
+        handler.removeCallbacks(bufferTimeoutRunnable)
+        handler.postDelayed(bufferTimeoutRunnable, TIMEOUT_MS)
+    }
+
+    /**
+     * Runnable to handle buffer timeout
+     */
+    private val bufferTimeoutRunnable = Runnable {
+        if (dataBuffer.isNotEmpty()) {
+            Log.d(TAG, "Buffer timeout - processing remaining data: ${dataBuffer.length} chars")
+            val remainingData = dataBuffer.toString().trim()
+            dataBuffer.clear()
+
+            if (remainingData.isNotEmpty() && remainingData.length >= MIN_MESSAGE_LENGTH) {
+                // If there's a custom delimiter, try to split
+                if (customDelimiter != null) {
+                    val parts = remainingData.split(customDelimiter!!)
+                    parts.forEach { part ->
+                        if (part.isNotEmpty()) {
+                            handleCompleteMessage(part)
+                        }
+                    }
+                } else {
+                    handleCompleteMessage(remainingData)
+                }
+            }
+        }
+    }
 
     private fun updateStatus(text: String) {
         handler.post {
@@ -425,7 +556,7 @@ class SerialFragment : Fragment() {
 
     private fun displayData(data: String) {
         val timestamp = dateFormat.format(Date())
-        val formattedData = "[$timestamp] $data"
+        val formattedData = "$timestamp $data"
         val currentText = binding.textDataDisplay.text.toString()
         val newText = if (currentText == "Disconnected" || currentText == "Ready" || currentText.startsWith("Connected") || currentText.startsWith("Waiting")) {
             formattedData
@@ -436,8 +567,46 @@ class SerialFragment : Fragment() {
         }
         binding.textDataDisplay.text = newText
         dataCounter++
+        saveSerialData(data)
+        saveToFile(data)
         binding.textStats.text = "Packets: $dataCounter"
         binding.scrollView.post { binding.scrollView.fullScroll(View.FOCUS_DOWN) }
+    }
+
+    private fun saveSerialData(data: String) {
+        if (!isSavingEnabled) return
+        try {
+            val timestamp = dateFormat.format(Date())
+            val trueData = data.split(" ")[0]
+            val record = SerialDataRecord(
+                Time = timestamp,
+                Capacitance = trueData.toInt(),
+            )
+
+            dataManager.saveRecord(record)
+
+            // Update statistics
+            binding.textStats.text = "Packets: $dataCounter | Saved: ${dataManager.getRecordCount()}"
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving data", e)
+        }
+    }
+
+    private fun saveToFile(data: String) {
+        try {
+            val fileName = "serial_data_${patientId}_${SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())}.log"
+            val file = File(requireContext().getExternalFilesDir(null), fileName)
+            val trueData = data.split(" ")[0]
+
+            FileWriter(file, true).use { writer ->
+                val timestamp = dateFormat.format(Date())
+                writer.write("[$timestamp] $trueData\n")
+                writer.flush()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving to file", e)
+        }
     }
 
     private fun enableSpinners(enabled: Boolean) {
@@ -497,7 +666,7 @@ class SerialFragment : Fragment() {
     private val serialListener = object : SerialInputOutputManager.Listener {
         override fun onNewData(data: ByteArray) {
             val text = String(data, Charsets.UTF_8)
-            handler.post { displayData(text) }
+            handler.post { processIncomingData(data) }
         }
         override fun onRunError(e: Exception?) {
             handler.post {
@@ -512,6 +681,8 @@ class SerialFragment : Fragment() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.d(TAG, "onCreate")
+
+
 
         // Get patient data from arguments
         arguments?.let {

@@ -51,4 +51,5 @@ dependencies {
     implementation("androidx.navigation:navigation-fragment-ktx:2.7.6")
     implementation("androidx.navigation:navigation-ui-ktx:2.7.6")
     implementation("com.github.mik3y:usb-serial-for-android:3.8.0")
+    implementation("com.google.code.gson:gson:2.11.0")
 }
