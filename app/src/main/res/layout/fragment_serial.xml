@@ -244,6 +244,12 @@
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
+        <Button
+            android:id="@+id/buttonStorageManager"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="📁 Storage" />
+
         <!-- Status -->
         <TextView
             android:id="@+id/textStatus"

@@ -333,6 +333,9 @@ class SerialFragment : Fragment() {
             binding.buttonPlot.setOnClickListener {
                 navigateToPlot()
             }
+            binding.buttonStorageManager.setOnClickListener {
+                findNavController().navigate(R.id.action_serialFragment_to_folderViewerFragment)
+            }
             Log.d(TAG, "Buttons setup done")
         } catch (e: Exception) {
             Log.e(TAG, "Error setting up buttons", e)

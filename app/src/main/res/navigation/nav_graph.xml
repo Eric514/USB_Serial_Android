@@ -16,6 +16,12 @@
     </fragment>
 
     <fragment
+        android:id="@+id/folderViewerFragment"
+        android:name="com.deepgaze.glasses.FolderViewerFragment"
+        android:label="Storage Manager"
+        tools:layout="@layout/fragment_folder_viewer" />
+
+    <fragment
         android:id="@+id/serialFragment"
         android:name="com.deepgaze.glasses.SerialFragment"
         android:label="USB Serial"
@@ -74,6 +80,9 @@
             android:name="mode"
             app:argType="string"
             android:defaultValue='""' />
+        <action
+            android:id="@+id/action_serialFragment_to_folderViewerFragment"
+            app:destination="@id/folderViewerFragment" />
     </fragment>
 
 </navigation>
