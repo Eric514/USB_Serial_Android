@@ -1,5 +1,14 @@
 <resources>
     <string name="app_name">USB Serial</string>
+    <string name="patient_id_hint">Patient ID *</string>
+    <string name="patient_name_hint">Patient Name *</string>
+    <string name="gender_spinner_hint">Select Gender</string>
+    <string name="age_hint">Age</string>
+    <string name="date_hint">Date (YYYY-MM-DD)</string>
+    <string name="time_hint">Time (HH:MM)</string>
+    <string name="notes_symptoms_hint">Notes / Symptoms</string>
+    <string name="save_patient_data_hint">💾 Save Patient Data</string>
+    <string name="info_text_hint">Fill in the patient information, then click \'Save Patient Data\' to proceed.</string>
     <string-array name="gender_options">
         <item>Male</item>
         <item>Female</item>
