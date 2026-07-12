@@ -57,6 +57,9 @@
         <action
             android:id="@+id/action_serial_to_plot"
             app:destination="@id/plotFragment" />
+        <action
+            android:id="@+id/action_serialFragment_to_folderViewerFragment"
+            app:destination="@id/folderViewerFragment" />
     </fragment>
 
     <fragment
@@ -80,9 +83,6 @@
             android:name="mode"
             app:argType="string"
             android:defaultValue='""' />
-        <action
-            android:id="@+id/action_serialFragment_to_folderViewerFragment"
-            app:destination="@id/folderViewerFragment" />
     </fragment>
 
 </navigation>
