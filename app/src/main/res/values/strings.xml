@@ -1,23 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">USB Serial</string>
+
+    <!-- Serial Fragment Strings -->
+    <string name="button_back">← Back</string>
+    <string name="title_glass_setup">Glass Setup</string>
+    <string name="title_serial_settings">⚙️ Serial Port Settings</string>
+    <string name="label_device">Device:</string>
+    <string name="button_refresh">⟳</string>
+    <string name="label_baud">Baud:</string>
+    <string name="label_data">Data:</string>
+    <string name="label_stop">Stop:</string>
+    <string name="label_parity">Parity:</string>
+    <string name="button_connect">Connect</string>
+    <string name="button_disconnect">Disconnect</string>
+    <string name="button_start">Start</string>
+    <string name="button_stop">Stop</string>
+    <string name="button_start_receiving">Start Receiving</string>
+    <string name="button_stop_receiving">Stop Receiving</string>
+    <string name="title_data_actions">📊 Data Actions</string>
+    <string name="button_plot">📊 Plot</string>
+    <string name="button_storage">📁 Storage</string>
+    <string name="status_ready">Status: Ready</string>
+    <string name="stats_packets">Packets: 0</string>
+    <string name="data_ready">Ready</string>
+    <string name="data_received">📊 Received Data</string>
+    <string name="connect_text">Connect</string>
+    <string name="disconnected_text">Disconnected</string>
+    <string name="receiving_button_text">Start Receiving</string>
+    <string name="stop_receiving_button_text">Stop Receiving</string>
+    <string name="packets_counter">Packets: %d</string>
+    <string name="packets_saved_stat_text">Packets: %d | Saved: %d</string>
+    <string name="on_connect_info_display">%s\n\n%s</string>
+    <string name="status_text">Status: %s</string>
+
+    <!-- Patient Info Strings -->
+    <string name="title_blink_monitor">Blink Monitor</string>
+    <string name="title_patient_registration">👤 Patient Registration</string>
     <string name="patient_id_hint">Patient ID *</string>
     <string name="patient_name_hint">Patient Name *</string>
-    <string name="gender_spinner_hint">Select Gender</string>
+    <string name="gender_spinner_hint">Gender</string>
     <string name="age_hint">Age</string>
     <string name="date_hint">Date (YYYY-MM-DD)</string>
     <string name="time_hint">Time (HH:MM)</string>
     <string name="notes_symptoms_hint">Notes / Symptoms</string>
-    <string name="save_patient_data_hint">💾 Save Patient Data</string>
-    <string name="info_text_hint">Fill in the patient information, then click \'Save Patient Data\' to proceed.</string>
-    <string name="status_text">Status: %1$s</string>
-    <string name="receiving_button_text">Start Receiving</string>
-    <string name="on_connect_info_display">%1$s\n\n%2$s</string>
-    <string name="stop_receiving_button_text">Stop Receiving</string>
-    <string name="connect_text">Connect</string>
-    <string name="disconnected_text">Disconnected</string>
-    <string name="packets_counter">Packets: %1$d</string>
-    <string name="packets_saved_stat_text">Packets: %1$d | Saved: %2$d</string>
+    <string name="save_patient_data_hint">💾 Save &amp; Continue</string>
+    <string name="info_text_hint">Fill in the patient information then click Save &amp; Continue to proceed to USB configuration.</string>
+
+    <!-- Plot Fragment Strings -->
+    <string name="plot_title">📊 Capacitance Plot</string>
+    <string name="plot_latest">Latest: —</string>
+    <string name="plot_stats">Min: — | Max: — | Avg: — | Median: — | Count: 0</string>
+    <string name="plot_empty">No data loaded. Click \'Start\' for real-time.</string>
+    <string name="plot_start">▶ Start</string>
+    <string name="plot_stop">⏹ Stop</string>
+    <string name="plot_load_file">📂 Load File</string>
+    <string name="plot_clear">🗑 Clear</string>
+    <string name="plot_zoom_reset">🔍 Reset</string>
+    <string name="plot_points">Points: %d</string>
+    <string name="plot_loaded">Loaded: %s\nPoints: %d</string>
+    <string name="plot_patient"> | Patient: %s</string>
+
+    <!-- Storage/File Strings -->
     <string name="open_file_text">Open</string>
+    <string name="delete_file_text">Delete</string>
+    <string name="file_size_text">Size: %s</string>
+    <string name="file_date_text">Date: %s</string>
+    <string name="no_files_text">No files found</string>
+    <string name="storage_title">Storage Manager</string>
+    <string name="storage_empty">No data files saved yet</string>
+
+    <!-- Gender Array -->
     <string-array name="gender_options">
         <item>Male</item>
         <item>Female</item>

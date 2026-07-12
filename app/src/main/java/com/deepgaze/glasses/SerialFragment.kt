@@ -594,7 +594,7 @@ class SerialFragment : Fragment() {
         saveToFile(data)
 
         binding.textStats.text = getString(R.string.packets_counter, dataCounter)
-        binding.scrollView.post { binding.scrollView.fullScroll(View.FOCUS_DOWN) }
+//        binding.scrollView.post { binding.scrollView.fullScroll(View.FOCUS_DOWN) }
     }
 
     private fun saveSerialData(data: String) {

@@ -17,43 +17,55 @@
         <!-- Back Button -->
         <Button
             android:id="@+id/buttonBack"
+            style="?android:attr/buttonBarButtonStyle"
             android:layout_width="wrap_content"
-            android:layout_height="40dp"
-            android:text="← Back"
+            android:layout_height="36dp"
+            android:text="@string/button_back"
             android:backgroundTint="#757575"
             android:textColor="#FFFFFF"
-            android:layout_marginBottom="12dp" />
+            android:textSize="13sp"
+            android:layout_marginBottom="8dp" />
 
         <!-- Title -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="🔌 USB Configuration"
-            android:textSize="22sp"
+            android:text="@string/title_glass_setup"
+            android:textSize="20sp"
             android:textStyle="bold"
             android:textColor="#2196F3"
-            android:gravity="center"
-            android:padding="8dp"
-            android:layout_marginBottom="12dp" />
+            android:gravity="start"
+            android:padding="4dp"
+            android:layout_marginBottom="8dp" />
 
         <!-- Patient Info Display -->
-        <TextView
-            android:id="@+id/textPatientInfo"
+        <androidx.cardview.widget.CardView
+            android:id="@+id/cardPatientInfo"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="#E8F5E9"
-            android:padding="12dp"
-            android:textSize="13sp"
-            android:textColor="#2E7D32"
-            android:layout_marginBottom="12dp"
+            android:layout_marginBottom="8dp"
             android:visibility="gone"
-            android:gravity="center" />
+            app:cardCornerRadius="8dp"
+            app:cardElevation="2dp"
+            app:cardBackgroundColor="#E8F5E9">
+
+            <TextView
+                android:id="@+id/textPatientInfo"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:padding="10dp"
+                android:textSize="12sp"
+                android:textColor="#2E7D32"
+                android:gravity="center"
+                android:lineSpacingExtra="2dp" />
+
+        </androidx.cardview.widget.CardView>
 
         <!-- USB Configuration Card -->
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
+            android:layout_marginBottom="12dp"
             app:cardCornerRadius="12dp"
             app:cardElevation="4dp"
             app:cardBackgroundColor="#FFFFFF">
@@ -62,47 +74,47 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:padding="16dp">
+                android:padding="14dp">
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="⚙️ Settings"
-                    android:textSize="16sp"
+                    android:text="@string/title_serial_settings"
+                    android:textSize="15sp"
                     android:textStyle="bold"
                     android:textColor="#333333"
-                    android:layout_marginBottom="12dp" />
+                    android:layout_marginBottom="10dp" />
 
                 <!-- Device Selection -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
-                    android:layout_marginBottom="12dp">
+                    android:layout_marginBottom="6dp">
 
                     <TextView
-                        android:layout_width="wrap_content"
+                        android:layout_width="48dp"
                         android:layout_height="wrap_content"
-                        android:text="Device:"
-                        android:textSize="14sp"
+                        android:text="@string/label_device"
+                        android:textSize="13sp"
                         android:textStyle="bold"
-                        android:paddingTop="8dp"
-                        android:layout_marginEnd="8dp" />
+                        android:paddingTop="6dp" />
 
                     <Spinner
                         android:id="@+id/spinnerDevice"
                         android:layout_width="0dp"
-                        android:layout_height="wrap_content"
+                        android:layout_height="32dp"
                         android:layout_weight="1"
-                        android:background="@android:drawable/spinner_background" />
+                        android:background="@android:drawable/editbox_background"
+                        android:popupBackground="@android:color/white" />
 
                     <Button
                         android:id="@+id/buttonRefresh"
-                        android:layout_width="48dp"
-                        android:layout_height="48dp"
-                        android:text="⟳"
-                        android:textSize="20sp"
-                        android:layout_marginStart="8dp"
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:text="@string/button_refresh"
+                        android:textSize="14sp"
+                        android:layout_marginStart="6dp"
                         android:padding="0dp"
                         android:backgroundTint="#2196F3"
                         android:textColor="#FFFFFF" />
@@ -113,103 +125,108 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
-                    android:layout_marginBottom="12dp">
+                    android:layout_marginBottom="6dp">
 
                     <TextView
-                        android:layout_width="wrap_content"
+                        android:layout_width="48dp"
                         android:layout_height="wrap_content"
-                        android:text="Baud Rate:"
-                        android:textSize="14sp"
+                        android:text="@string/label_baud"
+                        android:textSize="13sp"
                         android:textStyle="bold"
-                        android:paddingTop="8dp"
-                        android:layout_marginEnd="8dp" />
+                        android:paddingTop="6dp" />
 
                     <Spinner
                         android:id="@+id/spinnerBaudRate"
                         android:layout_width="0dp"
-                        android:layout_height="wrap_content"
+                        android:layout_height="32dp"
                         android:layout_weight="1"
-                        android:background="@android:drawable/spinner_background" />
+                        android:background="@android:drawable/editbox_background"
+                        android:popupBackground="@android:color/white" />
                 </LinearLayout>
 
-                <!-- Data Bits and Stop Bits Row -->
+                <!-- Data, Stop, Parity - Using LinearLayout with weights (no nested weights) -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
-                    android:layout_marginBottom="12dp">
+                    android:layout_marginBottom="10dp"
+                    android:baselineAligned="false">
 
+                    <!-- Data Bits -->
                     <LinearLayout
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:orientation="horizontal"
-                        android:layout_marginEnd="8dp">
+                        android:layout_marginEnd="3dp">
 
                         <TextView
-                            android:layout_width="wrap_content"
+                            android:layout_width="28dp"
                             android:layout_height="wrap_content"
-                            android:text="Data:"
-                            android:textSize="14sp"
+                            android:text="@string/label_data"
+                            android:textSize="11sp"
                             android:textStyle="bold"
-                            android:paddingTop="8dp"
-                            android:layout_marginEnd="8dp" />
+                            android:paddingTop="8dp" />
 
                         <Spinner
                             android:id="@+id/spinnerDataBits"
                             android:layout_width="0dp"
-                            android:layout_height="wrap_content"
+                            android:layout_height="32dp"
                             android:layout_weight="1"
-                            android:background="@android:drawable/spinner_background" />
+                            android:background="@android:drawable/editbox_background"
+                            android:popupBackground="@android:color/white" />
                     </LinearLayout>
 
+                    <!-- Stop Bits -->
                     <LinearLayout
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:orientation="horizontal"
-                        android:layout_marginStart="8dp">
+                        android:layout_marginStart="3dp"
+                        android:layout_marginEnd="3dp">
 
                         <TextView
-                            android:layout_width="wrap_content"
+                            android:layout_width="28dp"
                             android:layout_height="wrap_content"
-                            android:text="Stop:"
-                            android:textSize="14sp"
+                            android:text="@string/label_stop"
+                            android:textSize="11sp"
                             android:textStyle="bold"
-                            android:paddingTop="8dp"
-                            android:layout_marginEnd="8dp" />
+                            android:paddingTop="8dp" />
 
                         <Spinner
                             android:id="@+id/spinnerStopBits"
                             android:layout_width="0dp"
-                            android:layout_height="wrap_content"
+                            android:layout_height="32dp"
                             android:layout_weight="1"
-                            android:background="@android:drawable/spinner_background" />
+                            android:background="@android:drawable/editbox_background"
+                            android:popupBackground="@android:color/white" />
                     </LinearLayout>
-                </LinearLayout>
 
-                <!-- Parity -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:layout_marginBottom="12dp">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Parity:"
-                        android:textSize="14sp"
-                        android:textStyle="bold"
-                        android:paddingTop="8dp"
-                        android:layout_marginEnd="8dp" />
-
-                    <Spinner
-                        android:id="@+id/spinnerParity"
+                    <!-- Parity -->
+                    <LinearLayout
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:background="@android:drawable/spinner_background" />
+                        android:orientation="horizontal"
+                        android:layout_marginStart="3dp">
+
+                        <TextView
+                            android:layout_width="32dp"
+                            android:layout_height="wrap_content"
+                            android:text="@string/label_parity"
+                            android:textSize="11sp"
+                            android:textStyle="bold"
+                            android:paddingTop="8dp" />
+
+                        <Spinner
+                            android:id="@+id/spinnerParity"
+                            android:layout_width="0dp"
+                            android:layout_height="32dp"
+                            android:layout_weight="1"
+                            android:background="@android:drawable/editbox_background"
+                            android:popupBackground="@android:color/white" />
+                    </LinearLayout>
                 </LinearLayout>
 
                 <!-- USB Control Buttons -->
@@ -217,27 +234,30 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
-                    android:layout_marginTop="8dp">
+                    style="?android:attr/buttonBarStyle">
 
                     <Button
                         android:id="@+id/buttonConnect"
+                        style="?android:attr/buttonBarButtonStyle"
                         android:layout_width="0dp"
-                        android:layout_height="45dp"
+                        android:layout_height="38dp"
                         android:layout_weight="1"
-                        android:text="Connect"
+                        android:text="@string/button_connect"
                         android:enabled="false"
                         android:layout_marginEnd="4dp"
+                        android:textSize="13sp"
                         android:backgroundTint="#4CAF50"
                         android:textColor="#FFFFFF" />
 
                     <Button
                         android:id="@+id/buttonDisconnect"
+                        style="?android:attr/buttonBarButtonStyle"
                         android:layout_width="0dp"
-                        android:layout_height="45dp"
+                        android:layout_height="38dp"
                         android:layout_weight="1"
-                        android:text="Disconnect"
+                        android:text="@string/button_disconnect"
                         android:layout_marginStart="4dp"
-                        android:layout_marginEnd="4dp"
+                        android:textSize="13sp"
                         android:backgroundTint="#F44336"
                         android:textColor="#FFFFFF" />
 
@@ -245,73 +265,149 @@
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
-        <!-- Status -->
-
-        <Button
-            android:id="@+id/buttonPlot"
-            android:layout_width="match_parent"
-            android:layout_height="45dp"
-            android:layout_marginTop="8dp"
-            android:backgroundTint="#9C27B0"
-            android:text="📊 View Plot"
-            android:textColor="#FFFFFF" />
-
-        <Button
-            android:id="@+id/buttonStorageManager"
+        <!-- Action Buttons Card -->
+        <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="📁 Storage" />
+            android:layout_marginBottom="12dp"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="4dp"
+            app:cardBackgroundColor="#FFFFFF">
 
-        <TextView
-            android:id="@+id/textStatus"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="#E3F2FD"
-            android:padding="10dp"
-            android:text="Status: Ready"
-            android:textSize="13sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="8dp"
-            android:gravity="center" />
-
-        <!-- Stats -->
-
-        <TextView
-            android:id="@+id/textStats"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="#FFF9C4"
-            android:padding="6dp"
-            android:text="Packets: 0"
-            android:textSize="12sp"
-            android:layout_marginBottom="8dp" />
-
-        <!-- Data Display -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="📊 Received Data"
-            android:textStyle="bold"
-            android:textSize="14sp"
-            android:layout_marginBottom="4dp" />
-
-        <ScrollView
-            android:id="@+id/scrollView"
-            android:layout_width="match_parent"
-            android:layout_height="200dp"
-            android:background="#FAFAFA"
-            android:padding="4dp"
-            android:scrollbars="vertical">
-
-            <TextView
-                android:id="@+id/textDataDisplay"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:fontFamily="monospace"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/title_data_actions"
+                    android:textSize="15sp"
+                    android:textStyle="bold"
+                    android:textColor="#333333"
+                    android:layout_marginBottom="8dp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    style="?android:attr/buttonBarStyle">
+
+                    <Button
+                        android:id="@+id/buttonPlot"
+                        style="?android:attr/buttonBarButtonStyle"
+                        android:layout_width="0dp"
+                        android:layout_height="38dp"
+                        android:layout_weight="1"
+                        android:layout_marginEnd="4dp"
+                        android:text="@string/button_plot"
+                        android:textSize="13sp"
+                        android:backgroundTint="#9C27B0"
+                        android:textColor="#FFFFFF" />
+
+                    <Button
+                        android:id="@+id/buttonStorageManager"
+                        style="?android:attr/buttonBarButtonStyle"
+                        android:layout_width="0dp"
+                        android:layout_height="38dp"
+                        android:layout_weight="1"
+                        android:layout_marginStart="4dp"
+                        android:text="@string/button_storage"
+                        android:textSize="13sp"
+                        android:backgroundTint="#FF9800"
+                        android:textColor="#FFFFFF" />
+
+                </LinearLayout>
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- Status Card -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            app:cardCornerRadius="8dp"
+            app:cardElevation="2dp"
+            app:cardBackgroundColor="#E3F2FD">
+
+            <TextView
+                android:id="@+id/textStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:padding="10dp"
+                android:text="@string/status_ready"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:textColor="#1565C0"
+                android:gravity="center" />
+
+        </androidx.cardview.widget.CardView>
+
+        <!-- Stats Card -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            app:cardCornerRadius="8dp"
+            app:cardElevation="2dp"
+            app:cardBackgroundColor="#FFF9C4">
+
+            <TextView
+                android:id="@+id/textStats"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
                 android:padding="8dp"
-                android:text="Ready"
-                android:textSize="12sp" />
-        </ScrollView>
+                android:text="@string/stats_packets"
+                android:textSize="11sp"
+                android:textColor="#795548"
+                android:gravity="center" />
+
+        </androidx.cardview.widget.CardView>
+
+        <!-- Data Display Card - Using TextView with built-in scrolling -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="4dp"
+            app:cardBackgroundColor="#FFFFFF">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="10dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/data_received"
+                    android:textStyle="bold"
+                    android:textSize="13sp"
+                    android:textColor="#333333"
+                    android:layout_marginBottom="6dp" />
+
+                <!-- Using TextView with scrolling enabled instead of nested ScrollView -->
+                <TextView
+                    android:id="@+id/textDataDisplay"
+                    android:layout_width="match_parent"
+                    android:layout_height="180dp"
+                    android:fontFamily="monospace"
+                    android:padding="6dp"
+                    android:text="@string/data_ready"
+                    android:textSize="11sp"
+                    android:textColor="#333333"
+                    android:background="#FAFAFA"
+                    android:scrollbars="vertical"
+                    android:maxLines="100"
+                    android:inputType="textMultiLine"
+                    android:overScrollMode="always" />
+
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
 
     </LinearLayout>
 </ScrollView>
