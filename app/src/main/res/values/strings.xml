@@ -16,6 +16,7 @@
     <string name="connect_text">Connect</string>
     <string name="disconnected_text">Disconnected</string>
     <string name="packets_counter">Packets: %1$d</string>
+    <string name="packets_saved_stat_text">Packets: %1$d | Saved: %2$d</string>
     <string-array name="gender_options">
         <item>Male</item>
         <item>Female</item>

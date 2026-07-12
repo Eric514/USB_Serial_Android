@@ -586,7 +586,11 @@ class SerialFragment : Fragment() {
             dataManager.saveRecord(record)
 
             // Update statistics
-            binding.textStats.text = "Packets: $dataCounter | Saved: ${dataManager.getRecordCount()}"
+            binding.textStats.text = getString(
+                R.string.packets_saved_stat_text,
+                dataCounter,
+                dataManager.getRecordCount()
+            )
 
         } catch (e: Exception) {
             Log.e(TAG, "Error saving data", e)
@@ -595,7 +599,7 @@ class SerialFragment : Fragment() {
 
     private fun saveToFile(data: String) {
         try {
-            val fileName = "serial_data_${patientId}_${SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())}.log"
+            val fileName = "serial_data_${patientId}_${SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())}.csv"
             val file = File(requireContext().getExternalFilesDir(null), fileName)
             val trueData = data.split(" ")[0]
 
