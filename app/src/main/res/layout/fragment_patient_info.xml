@@ -93,6 +93,7 @@
                     <FrameLayout
                         android:layout_width="0dp"
                         android:layout_height="match_parent"
+                        android:layout_marginTop="8dp"
                         android:layout_weight="1">
 
                         <TextView
@@ -105,6 +106,7 @@
                             android:id="@+id/spinnerGender"
                             android:layout_width="match_parent"
                             android:layout_height="match_parent"
+                            android:layout_marginTop="8dp"
                             android:entries="@array/gender_options"
                             android:prompt="@array/gender_options" />
                     </FrameLayout>
