@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.os.Trace.isEnabled
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
@@ -238,7 +239,6 @@ class PlotFragment : Fragment() {
     private fun setupButtons() {
         try {
             binding.buttonBack.setOnClickListener {
-                stopRealTimeMode()
                 findNavController().navigateUp()
             }
 
