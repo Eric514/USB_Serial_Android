@@ -54,7 +54,6 @@ class FolderViewerFragment : Fragment() {
         super.onCreate(savedInstanceState)
         storageManager = StorageManager(requireContext())
 
-        // ✅ Initialize the launcher in onCreate
         manageStorageLauncher = registerForActivityResult(
             ActivityResultContracts.StartActivityForResult()
         ) { _ ->
@@ -97,8 +96,6 @@ class FolderViewerFragment : Fragment() {
 
         return view
     }
-
-    // ... rest of the code remains the same
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)

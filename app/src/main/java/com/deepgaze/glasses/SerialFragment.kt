@@ -624,20 +624,31 @@ class SerialFragment : Fragment() {
 
     private fun saveToFile(data: String) {
         try {
+            // Create the SerialData directory if it doesn't exist
+            val baseDir = requireContext().getExternalFilesDir(null)
+            val serialDataDir = File(baseDir, "SerialData")
+
+            if (!serialDataDir.exists()) {
+                serialDataDir.mkdirs()
+                Log.d(TAG, "Created SerialData directory: ${serialDataDir.absolutePath}")
+            }
+
             val fileName = "serial_data_${patientId}_${SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())}.csv"
-            val file = File(requireContext().getExternalFilesDir(null), fileName)
+            val file = File(serialDataDir, fileName)
             val trueData = data.split(" ")[0]
 
             FileWriter(file, true).use { writer ->
-                val militimestamp = System.currentTimeMillis()
-                writer.write("$militimestamp $trueData\n")
+                val mili_timestamp = System.currentTimeMillis()
+                writer.write("$mili_timestamp $trueData\n")
                 writer.flush()
             }
+
+            Log.d(TAG, "Data saved to: ${file.absolutePath}")
+
         } catch (e: Exception) {
             Log.e(TAG, "Error saving to file", e)
         }
     }
-
     private fun enableSpinners(enabled: Boolean) {
         binding.spinnerBaudRate.isEnabled = enabled
         binding.spinnerDataBits.isEnabled = enabled
