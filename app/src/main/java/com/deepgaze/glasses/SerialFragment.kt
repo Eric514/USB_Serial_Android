@@ -600,8 +600,8 @@ class SerialFragment : Fragment() {
             val trueData = data.split(" ")[0]
 
             FileWriter(file, true).use { writer ->
-                val timestamp = System.currentTimeMillis()
-                writer.write("$timestamp $trueData\n")
+                val militimestamp = System.currentTimeMillis()
+                writer.write("$militimestamp $trueData\n")
                 writer.flush()
             }
         } catch (e: Exception) {
