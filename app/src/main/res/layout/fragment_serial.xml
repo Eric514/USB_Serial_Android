@@ -240,9 +240,21 @@
                         android:layout_marginEnd="4dp"
                         android:backgroundTint="#F44336"
                         android:textColor="#FFFFFF" />
+
                 </LinearLayout>
             </LinearLayout>
         </androidx.cardview.widget.CardView>
+
+        <!-- Status -->
+
+        <Button
+            android:id="@+id/buttonPlot"
+            android:layout_width="match_parent"
+            android:layout_height="45dp"
+            android:layout_marginTop="8dp"
+            android:backgroundTint="#9C27B0"
+            android:text="📊 View Plot"
+            android:textColor="#FFFFFF" />
 
         <Button
             android:id="@+id/buttonStorageManager"
@@ -250,7 +262,6 @@
             android:layout_height="wrap_content"
             android:text="📁 Storage" />
 
-        <!-- Status -->
         <TextView
             android:id="@+id/textStatus"
             android:layout_width="match_parent"
@@ -264,6 +275,7 @@
             android:gravity="center" />
 
         <!-- Stats -->
+
         <TextView
             android:id="@+id/textStats"
             android:layout_width="match_parent"
@@ -282,15 +294,6 @@
             android:textStyle="bold"
             android:textSize="14sp"
             android:layout_marginBottom="4dp" />
-
-        <Button
-            android:id="@+id/buttonPlot"
-            android:layout_width="match_parent"
-            android:layout_height="45dp"
-            android:text="📊 View Plot"
-            android:backgroundTint="#9C27B0"
-            android:textColor="#FFFFFF"
-            android:layout_marginTop="8dp" />
 
         <ScrollView
             android:id="@+id/scrollView"
