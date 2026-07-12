@@ -71,7 +71,7 @@ class SerialFragment : Fragment() {
     private var notes = ""
 
     // Serial configuration defaults
-    private var selectedBaudRate = 921600
+    private var selectedBaudRate = 115200
     private var selectedDataBits = 8
     private var selectedStopBits = UsbSerialPort.STOPBITS_1
     private var selectedParity = UsbSerialPort.PARITY_NONE
@@ -252,7 +252,7 @@ class SerialFragment : Fragment() {
         val baudAdapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, baudRates)
         baudAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.spinnerBaudRate.adapter = baudAdapter
-        binding.spinnerBaudRate.setSelection(4)
+        binding.spinnerBaudRate.setSelection(7)
         binding.spinnerBaudRate.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 selectedBaudRate = baudRates[position].toInt()
