@@ -1,25 +1,17 @@
 package com.deepgaze.glasses
 
-import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Environment
-import android.os.Handler
-import android.os.Looper
-import android.os.Trace.isEnabled
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
-import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
-import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.documentfile.provider.DocumentFile
 import androidx.fragment.app.Fragment
@@ -40,15 +32,12 @@ class PlotFragment : Fragment() {
     private val binding get() = _binding!!
 
     private lateinit var lineChart: LineChart
-    private val handler = Handler(Looper.getMainLooper())
-    private var isRealTimeMode = false
     private var dataPoints = mutableListOf<DataManager.CapacitanceDataPoint>()
     private val maxDisplayPoints = 200
     private val TAG = "PlotFragment"
     private var dataManager: DataManager? = null
     private var patientId = ""
     private var patientName = ""
-    private var isFragmentActive = true
     private var currentFilePath: String = ""
 
     // File picker for app's files
@@ -58,58 +47,6 @@ class PlotFragment : Fragment() {
         if (result.resultCode == android.app.Activity.RESULT_OK) {
             result.data?.data?.let { uri ->
                 handleFilePickerResult(uri)
-            }
-        }
-    }
-
-    // Permission launcher
-    private val permissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        val allGranted = permissions.values.all { it }
-        if (allGranted) {
-            showAppFilesDialog()
-        } else {
-            Toast.makeText(
-                requireContext(),
-                "Storage permission required to load files",
-                Toast.LENGTH_SHORT
-            ).show()
-        }
-    }
-
-    private val updateRunnable = object : Runnable {
-        override fun run() {
-            if (!isFragmentActive || !isAdded || isDetached) {
-                return
-            }
-
-            if (isRealTimeMode) {
-                try {
-                    dataManager?.let { dm ->
-                        val latestData = dm.getPlotDataPoints(maxDisplayPoints)
-                        dataPoints = latestData.toMutableList()
-
-                        if (dataPoints.isNotEmpty()) {
-                            updateChart()
-                            try {
-                                val stats = dm.getPlotStatistics()
-                                binding.textStats.text = stats.toString()
-                            } catch (e: Exception) {
-                                Log.e(TAG, "Error getting statistics", e)
-                            }
-                        }
-                    }
-
-                    if (isFragmentActive) {
-                        handler.postDelayed(this, 500)
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error in updateRunnable", e)
-                    if (isFragmentActive) {
-                        handler.postDelayed(this, 1000)
-                    }
-                }
             }
         }
     }
@@ -133,28 +70,15 @@ class PlotFragment : Fragment() {
                 try {
                     patientId = args.getString("patientId", "") ?: ""
                     patientName = args.getString("patientName", "") ?: ""
-                    val mode = args.getString("mode", "") ?: ""
                     val filePath = args.getString("filePath", "") ?: ""
 
-                    Log.d(TAG, "Arguments received - mode: $mode, patientId: $patientId, filePath: $filePath")
+                    Log.d(TAG, "Arguments received - patientId: $patientId, filePath: $filePath")
 
-                    when {
-                        mode == "realtime" -> {
-                            dataManager?.let { dm ->
-                                dataPoints = dm.getPlotDataPoints(maxDisplayPoints).toMutableList()
-                                if (dataPoints.isNotEmpty()) {
-                                    Toast.makeText(requireContext(), "Loaded ${dataPoints.size} data points", Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                        }
-                        filePath.isNotEmpty() -> {
-                            loadFileFromPath(filePath)
-                        }
-                        else -> {
-                            Log.d(TAG, "No mode specified or file path provided")
-                            // Try to load the latest file automatically
-                            loadLatestFile()
-                        }
+                    if (filePath.isNotEmpty()) {
+                        loadFileFromPath(filePath)
+                    } else {
+                        Log.d(TAG, "No file path provided, loading latest file")
+                        loadLatestFile()
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error parsing arguments", e)
@@ -168,7 +92,7 @@ class PlotFragment : Fragment() {
                 updateChart()
             } else {
                 showEmptyState()
-                binding.textFileInfo.text = "Select a file or click 'Start' for real-time plotting"
+                binding.textFileInfo.text = "Select a file to plot"
             }
 
         } catch (e: Exception) {
@@ -242,20 +166,10 @@ class PlotFragment : Fragment() {
                 findNavController().navigateUp()
             }
 
-            binding.buttonRealTime.setOnClickListener {
-                try {
-                    if (isRealTimeMode) {
-                        stopRealTimeMode()
-                    } else {
-                        startRealTimeMode()
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error toggling real-time mode", e)
-                    Toast.makeText(requireContext(), "Error: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
-            }
+            // Remove real-time button - hide it
+            binding.buttonRealTime.visibility = View.GONE
 
-            // Updated: Load File button shows app's files
+            // Load File button shows app's files
             binding.buttonLoadFile.setOnClickListener {
                 try {
                     showAppFilesDialog()
@@ -319,6 +233,8 @@ class PlotFragment : Fragment() {
                 val latestFile = files.first()
                 loadFileFromPath(latestFile.absolutePath)
                 Log.d(TAG, "Auto-loaded latest file: ${latestFile.name}")
+            } else {
+                Log.d(TAG, "No files found to load")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error loading latest file", e)
@@ -333,14 +249,10 @@ class PlotFragment : Fragment() {
             val files = getAppDataFiles()
 
             if (files.isEmpty()) {
-                // No files found - offer to create some or go to real-time
                 AlertDialog.Builder(requireContext())
                     .setTitle("No Data Files Found")
-                    .setMessage("No data files found in the app's storage.\n\nWould you like to:")
-                    .setPositiveButton("Start Real-Time") { _, _ ->
-                        startRealTimeMode()
-                    }
-                    .setNegativeButton("Cancel", null)
+                    .setMessage("No data files found in the app's storage.\n\nPlease save some data first using the Serial tab.")
+                    .setPositiveButton("OK", null)
                     .show()
                 return
             }
@@ -476,11 +388,6 @@ class PlotFragment : Fragment() {
                 if (dataPoints.isNotEmpty()) {
                     updateChart()
                     Toast.makeText(requireContext(), "Loaded ${dataPoints.size} data points", Toast.LENGTH_SHORT).show()
-
-                    // Stop real-time mode if it's running
-                    if (isRealTimeMode) {
-                        stopRealTimeMode()
-                    }
                 } else {
                     Toast.makeText(requireContext(), "No valid data points found in file", Toast.LENGTH_SHORT).show()
                     showEmptyState()
@@ -502,41 +409,6 @@ class PlotFragment : Fragment() {
             size >= 1024 -> String.format("%.2f KB", size / 1024.0)
             else -> "$size B"
         }
-    }
-
-    private fun startRealTimeMode() {
-        try {
-            isRealTimeMode = true
-            isFragmentActive = true
-            binding.buttonRealTime.text = "⏹ Stop"
-            binding.buttonRealTime.setBackgroundColor(Color.RED)
-
-            dataManager?.let { dm ->
-                dataPoints = dm.getPlotDataPoints(maxDisplayPoints).toMutableList()
-                if (dataPoints.isNotEmpty()) {
-                    Toast.makeText(requireContext(), "Real-time started with ${dataPoints.size} points", Toast.LENGTH_SHORT).show()
-                    updateChart()
-                } else {
-                    Toast.makeText(requireContext(), "Real-time started - waiting for data", Toast.LENGTH_SHORT).show()
-                }
-            }
-
-            handler.post(updateRunnable)
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Error starting real-time mode", e)
-            isRealTimeMode = false
-            Toast.makeText(requireContext(), "Failed to start: ${e.message}", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun stopRealTimeMode() {
-        isRealTimeMode = false
-        isFragmentActive = false
-        handler.removeCallbacks(updateRunnable)
-        binding.buttonRealTime.text = "▶ Start"
-        binding.buttonRealTime.setBackgroundColor(Color.GREEN)
-        Toast.makeText(requireContext(), "Real-time stopped", Toast.LENGTH_SHORT).show()
     }
 
     private fun updateChart() {
@@ -619,7 +491,7 @@ class PlotFragment : Fragment() {
             val emptyData = LineData()
             lineChart.data = emptyData
             lineChart.invalidate()
-            binding.textFileInfo.text = "No data loaded. Click 'Load File' to select a file or 'Start' for real-time."
+            binding.textFileInfo.text = "No data loaded. Click 'Load File' to select a file."
             binding.textLatestValue.text = "Latest: --"
             binding.textStats.text = "Min: -- | Max: -- | Avg: -- | Median: -- | Count: 0"
         } catch (e: Exception) {
@@ -640,24 +512,16 @@ class PlotFragment : Fragment() {
         }
     }
 
-    override fun onPause() {
-        super.onPause()
-        stopRealTimeMode()
-    }
-
     override fun onDestroyView() {
         super.onDestroyView()
-        isFragmentActive = false
-        stopRealTimeMode()
         _binding = null
     }
 
     companion object {
-        fun newInstance(filePath: String = "", mode: String = ""): PlotFragment {
+        fun newInstance(filePath: String = ""): PlotFragment {
             val fragment = PlotFragment()
             val args = Bundle()
             args.putString("filePath", filePath)
-            args.putString("mode", mode)
             fragment.arguments = args
             return fragment
         }

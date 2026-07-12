@@ -71,7 +71,7 @@ class SerialFragment : Fragment() {
     private var notes = ""
 
     // Serial configuration defaults
-    private var selectedBaudRate = 115200
+    private var selectedBaudRate = 921600
     private var selectedDataBits = 8
     private var selectedStopBits = UsbSerialPort.STOPBITS_1
     private var selectedParity = UsbSerialPort.PARITY_NONE
