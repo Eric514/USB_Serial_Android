@@ -277,6 +277,15 @@
             android:textSize="14sp"
             android:layout_marginBottom="4dp" />
 
+        <Button
+            android:id="@+id/buttonPlot"
+            android:layout_width="match_parent"
+            android:layout_height="45dp"
+            android:text="📊 View Plot"
+            android:backgroundTint="#9C27B0"
+            android:textColor="#FFFFFF"
+            android:layout_marginTop="8dp" />
+
         <ScrollView
             android:id="@+id/scrollView"
             android:layout_width="match_parent"

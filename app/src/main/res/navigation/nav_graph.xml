@@ -48,5 +48,33 @@
             android:name="notes"
             app:argType="string"
             android:defaultValue='""' />
+        <action
+            android:id="@+id/action_serial_to_plot"
+            app:destination="@id/plotFragment" />
     </fragment>
+
+    <fragment
+        android:id="@+id/plotFragment"
+        android:name="com.deepgaze.glasses.PlotFragment"
+        android:label="Capacitance Plot"
+        tools:layout="@layout/fragment_plot">
+        <argument
+            android:name="filePath"
+            app:argType="string"
+            android:defaultValue='""' />
+        <argument
+            android:name="patientId"
+            app:argType="string"
+            android:defaultValue='""' />
+        <argument
+            android:name="patientName"
+            app:argType="string"
+            android:defaultValue='""' />
+        <argument
+            android:name="mode"
+            app:argType="string"
+            android:defaultValue='""' />
+    </fragment>
+
 </navigation>
+

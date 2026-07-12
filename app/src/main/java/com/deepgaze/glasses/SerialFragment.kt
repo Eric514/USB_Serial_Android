@@ -330,6 +330,9 @@ class SerialFragment : Fragment() {
             binding.buttonBack.setOnClickListener {
                 findNavController().navigateUp()
             }
+            binding.buttonPlot.setOnClickListener {
+                navigateToPlot()
+            }
             Log.d(TAG, "Buttons setup done")
         } catch (e: Exception) {
             Log.e(TAG, "Error setting up buttons", e)
@@ -554,11 +557,26 @@ class SerialFragment : Fragment() {
         }
     }
 
+    private fun navigateToPlot() {
+        try {
+            val bundle = Bundle().apply {
+                putString("patientId", patientId)
+                putString("patientName", patientName)
+                putString("mode", "realtime")
+            }
+            findNavController().navigate(R.id.action_serial_to_plot, bundle)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error navigating to plot", e)
+            Toast.makeText(requireContext(), "Error opening plot: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun displayData(data: String) {
         val timestamp = dateFormat.format(Date())
         val formattedData = "$timestamp $data"
         val currentText = binding.textDataDisplay.text.toString()
-        val newText = if (currentText == "Disconnected" || currentText == "Ready" || currentText.startsWith("Connected") || currentText.startsWith("Waiting")) {
+        val newText = if (currentText == "Disconnected" || currentText == "Ready" ||
+            currentText.startsWith("Connected") || currentText.startsWith("Waiting")) {
             formattedData
         } else {
             val lines = currentText.split("\n")
@@ -567,8 +585,11 @@ class SerialFragment : Fragment() {
         }
         binding.textDataDisplay.text = newText
         dataCounter++
+
+        // Save to DataManager (which now also handles plot data)
         saveSerialData(data)
         saveToFile(data)
+
         binding.textStats.text = getString(R.string.packets_counter, dataCounter)
         binding.scrollView.post { binding.scrollView.fullScroll(View.FOCUS_DOWN) }
     }
@@ -583,6 +604,7 @@ class SerialFragment : Fragment() {
                 Capacitance = trueData.toInt(),
             )
 
+            // This will automatically add to plot data as well
             dataManager.saveRecord(record)
 
             // Update statistics
