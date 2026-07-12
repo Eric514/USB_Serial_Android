@@ -391,20 +391,26 @@
                     android:layout_marginBottom="6dp" />
 
                 <!-- Using TextView with scrolling enabled instead of nested ScrollView -->
-                <TextView
-                    android:id="@+id/textDataDisplay"
+                <ScrollView
+                    android:id="@+id/scrollView"
                     android:layout_width="match_parent"
                     android:layout_height="180dp"
-                    android:fontFamily="monospace"
-                    android:padding="6dp"
-                    android:text="@string/data_ready"
-                    android:textSize="11sp"
-                    android:textColor="#333333"
-                    android:background="#FAFAFA"
                     android:scrollbars="vertical"
-                    android:maxLines="100"
-                    android:inputType="textMultiLine"
-                    android:overScrollMode="always" />
+                    android:overScrollMode="always">
+
+                    <TextView
+                        android:id="@+id/textDataDisplay"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="monospace"
+                        android:padding="6dp"
+                        android:text="@string/data_ready"
+                        android:textSize="11sp"
+                        android:textColor="#333333"
+                        android:background="#FAFAFA"
+                        android:inputType="textMultiLine" />
+
+                </ScrollView>
 
             </LinearLayout>
         </androidx.cardview.widget.CardView>
