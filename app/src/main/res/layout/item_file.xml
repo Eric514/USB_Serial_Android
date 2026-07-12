@@ -58,7 +58,7 @@
             android:id="@+id/buttonOpen"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Open" />
+            android:text="@string/open_file_text" />
 
     </LinearLayout>
 
