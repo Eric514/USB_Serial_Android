@@ -27,11 +27,10 @@ import com.hoho.android.usbserial.driver.UsbSerialProber
 import com.hoho.android.usbserial.util.SerialInputOutputManager
 import java.util.*
 import java.util.concurrent.Executors
-import com.google.gson.Gson
 import java.io.File
 import java.io.FileWriter
 import java.text.SimpleDateFormat
-import java.util.*
+
 class SerialFragment : Fragment() {
     private var _binding: FragmentSerialBinding? = null
     private val binding get() = _binding!!
@@ -201,7 +200,7 @@ class SerialFragment : Fragment() {
     private fun updateStatus(text: String) {
         handler.post {
             try {
-                binding.textStatus.text = "Status: $text"
+                binding.textStatus.text = getString(R.string.status_text, text)
             } catch (e: Exception) {
                 Log.e(TAG, "updateStatus error", e)
             }
@@ -442,7 +441,7 @@ class SerialFragment : Fragment() {
 
             isConnected = true
             updateStatus("Connected at $selectedBaudRate baud")
-            binding.buttonConnect.text = "Start Receiving"
+            binding.buttonConnect.text = getString(R.string.receiving_button_text)
 
             // Disable configuration spinners when connected
             enableSpinners(false)
@@ -460,7 +459,8 @@ class SerialFragment : Fragment() {
 
             // Display patient info with connection
             val patientInfo = getPatientDataSummary()
-            binding.textDataDisplay.text = "$patientInfo\n\n$configInfo"
+            binding.textDataDisplay.text =
+                getString(R.string.on_connect_info_display, patientInfo, configInfo)
 
             Toast.makeText(requireContext(), "✅ Connected to USB device", Toast.LENGTH_SHORT).show()
             Log.d(TAG, "Device opened successfully")
@@ -488,7 +488,7 @@ class SerialFragment : Fragment() {
 
             isReceiving = true
             dataCounter = 0
-            binding.buttonConnect.text = "Stop Receiving"
+            binding.buttonConnect.text = getString(R.string.stop_receiving_button_text)
             updateStatus("Receiving data...")
             Log.d(TAG, "Receiving started")
 
@@ -506,7 +506,7 @@ class SerialFragment : Fragment() {
         serialIoManager = null
         executor?.shutdownNow()
         executor = null
-        binding.buttonConnect.text = "Start Receiving"
+        binding.buttonConnect.text = getString(R.string.receiving_button_text)
         updateStatus("Stopped receiving")
     }
 
@@ -518,8 +518,8 @@ class SerialFragment : Fragment() {
         } catch (_: Exception) {}
         serialPort = null
         isConnected = false
-        binding.buttonConnect.text = "Connect"
-        binding.textDataDisplay.text = "Disconnected"
+        binding.buttonConnect.text = getString(R.string.connect_text)
+        binding.textDataDisplay.text = getString(R.string.disconnected_text)
         updateStatus("Disconnected")
         enableSpinners(true)
     }
@@ -569,7 +569,7 @@ class SerialFragment : Fragment() {
         dataCounter++
         saveSerialData(data)
         saveToFile(data)
-        binding.textStats.text = "Packets: $dataCounter"
+        binding.textStats.text = getString(R.string.packets_counter, dataCounter)
         binding.scrollView.post { binding.scrollView.fullScroll(View.FOCUS_DOWN) }
     }
 
@@ -600,8 +600,8 @@ class SerialFragment : Fragment() {
             val trueData = data.split(" ")[0]
 
             FileWriter(file, true).use { writer ->
-                val timestamp = dateFormat.format(Date())
-                writer.write("[$timestamp] $trueData\n")
+                val timestamp = System.currentTimeMillis()
+                writer.write("$timestamp $trueData\n")
                 writer.flush()
             }
         } catch (e: Exception) {
