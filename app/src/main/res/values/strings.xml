@@ -9,6 +9,13 @@
     <string name="notes_symptoms_hint">Notes / Symptoms</string>
     <string name="save_patient_data_hint">💾 Save Patient Data</string>
     <string name="info_text_hint">Fill in the patient information, then click \'Save Patient Data\' to proceed.</string>
+    <string name="status_text">Status: %1$s</string>
+    <string name="receiving_button_text">Start Receiving</string>
+    <string name="on_connect_info_display">%1$s\n\n%2$s</string>
+    <string name="stop_receiving_button_text">Stop Receiving</string>
+    <string name="connect_text">Connect</string>
+    <string name="disconnected_text">Disconnected</string>
+    <string name="packets_counter">Packets: %1$d</string>
     <string-array name="gender_options">
         <item>Male</item>
         <item>Female</item>
