@@ -3,6 +3,7 @@ package com.deepgaze.glasses
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import java.text.SimpleDateFormat
@@ -28,7 +29,7 @@ class FileListAdapter(
 
     override fun onBindViewHolder(holder: FileViewHolder, position: Int) {
         val file = files[position]
-        holder.bind(file, onItemClick)
+        holder.bind(file, onItemClick, onItemClick)
     }
 
     override fun getItemCount(): Int = files.size
@@ -37,11 +38,20 @@ class FileListAdapter(
         private val textFileName: TextView = itemView.findViewById(R.id.textFileName)
         private val textFileInfo: TextView = itemView.findViewById(R.id.textFileInfo)
         private val textFileSize: TextView = itemView.findViewById(R.id.textFileSize)
-        private val textFileType: TextView = itemView.findViewById(R.id.textFileType)
+        private val buttonOpen: Button = itemView.findViewById(R.id.buttonOpen)
 
-        fun bind(file: DataFileInfo, onItemClick: (DataFileInfo) -> Unit) {
+        fun bind(
+            file: DataFileInfo,
+            onOpenClick: (DataFileInfo) -> Unit,
+            onItemClick: (DataFileInfo) -> Unit,
+        ) {
             textFileName.text = file.name
-            textFileInfo.text = "Modified: ${SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(file.modifiedDate)}"
+            textFileInfo.text = "Modified: ${
+                SimpleDateFormat(
+                    "yyyy-MM-dd HH:mm",
+                    Locale.getDefault()
+                ).format(file.modifiedDate)
+            }"
 
             // Format size
             val sizeText = when {
@@ -51,18 +61,12 @@ class FileListAdapter(
             }
             textFileSize.text = sizeText
 
-            // File type icon
-            textFileType.text = when (file.fileType) {
-                "CSV" -> "📊"
-                "Text" -> "📄"
-                "Log" -> "📝"
-                "JSON" -> "📋"
-                "XML" -> "📑"
-                else -> "📁"
-            }
-
             itemView.setOnClickListener {
                 onItemClick(file)
+            }
+
+            buttonOpen.setOnClickListener {
+                onOpenClick(file)
             }
         }
     }
