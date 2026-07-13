@@ -354,15 +354,6 @@ class PlotFragment : Fragment() {
                 binding.textLatestValue.text = "Last in view: ${lastPoint.capacitance} pF"
             }
 
-            // Update statistics
-            dataManager?.let { dm ->
-                try {
-                    val stats = dm.getPlotStatistics()
-                    binding.textStats.text = stats.toString()
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error getting statistics", e)
-                }
-            }
 
             lineChart.invalidate()
             currentStartIndex = safeStart
@@ -689,7 +680,6 @@ class PlotFragment : Fragment() {
             lineChart.invalidate()
             binding.textFileInfo.text = "No data loaded. Click 'Load File' to select a file."
             binding.textLatestValue.text = "Latest: --"
-            binding.textStats.text = "Min: -- | Max: -- | Avg: -- | Median: -- | Count: 0"
             binding.textRangeInfo.visibility = View.GONE
             binding.buttonScrollLeft.visibility = View.GONE
             binding.buttonScrollRight.visibility = View.GONE

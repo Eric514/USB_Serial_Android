@@ -60,7 +60,7 @@
     <string name="plot_patient"> | Patient: %s</string>
 
     <!-- Storage/File Strings -->
-    <string name="open_file_text">Open</string>
+    <string name="open_file_text">Options</string>
     <string name="delete_file_text">Delete</string>
     <string name="file_size_text">Size: %s</string>
     <string name="file_date_text">Date: %s</string>

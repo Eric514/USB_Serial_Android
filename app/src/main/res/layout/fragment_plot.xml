@@ -7,19 +7,19 @@
     android:padding="12dp">
 
     <!-- Header -->
+    <Button
+        android:id="@+id/buttonBack"
+        android:layout_width="wrap_content"
+        android:layout_height="40dp"
+        android:backgroundTint="#757575"
+        android:text="← Back"
+        android:textColor="#FFFFFF" />
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:layout_marginBottom="8dp">
-
-        <Button
-            android:id="@+id/buttonBack"
-            android:layout_width="wrap_content"
-            android:layout_height="40dp"
-            android:text="← Back"
-            android:backgroundTint="#757575"
-            android:textColor="#FFFFFF" />
 
         <TextView
             android:layout_width="0dp"
@@ -29,7 +29,7 @@
             android:textSize="20sp"
             android:textStyle="bold"
             android:textColor="#2196F3"
-            android:gravity="center" />
+            android:gravity="start" />
 
     </LinearLayout>
 
@@ -53,15 +53,6 @@
         android:layout_marginBottom="8dp" />
 
     <!-- Statistics -->
-    <TextView
-        android:id="@+id/textStats"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="#FFF9C4"
-        android:padding="6dp"
-        android:text="Min: -- | Max: -- | Avg: -- | Median: --"
-        android:textSize="12sp"
-        android:layout_marginBottom="8dp" />
 
     <!-- Latest Value -->
     <TextView
@@ -127,7 +118,7 @@
             android:layout_marginEnd="4dp"
             android:layout_weight="1"
             android:backgroundTint="#2196F3"
-            android:text="📂 Load File"
+            android:text="📂 Load"
             android:textColor="#FFFFFF" />
 
         <Button

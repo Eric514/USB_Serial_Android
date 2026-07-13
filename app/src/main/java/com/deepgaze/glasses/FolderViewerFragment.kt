@@ -87,7 +87,6 @@ class FolderViewerFragment : Fragment() {
         buttonBack = view.findViewById(R.id.buttonBack)
         buttonRefresh = view.findViewById(R.id.buttonRefresh)
         buttonChangeFolder = view.findViewById(R.id.buttonChangeFolder)
-        buttonOpenFolder = view.findViewById(R.id.buttonOpenFolder)
         buttonClearAll = view.findViewById(R.id.buttonClearAll)
         buttonRequestPermission = view.findViewById(R.id.buttonRequestPermission)
 
