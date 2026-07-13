@@ -368,7 +368,6 @@ class SerialFragment : Fragment() {
                 findNavController().navigateUp()
             }
             binding.buttonPlot.setOnClickListener {
-                dataCounter = 0
                 navigateToPlot()
             }
             binding.buttonStorageManager.setOnClickListener {
@@ -556,6 +555,7 @@ class SerialFragment : Fragment() {
     private fun disconnect() {
         Log.d(TAG, "disconnect")
         stopReceiving()
+        dataCounter = 0
         try {
             serialPort?.close()
         } catch (_: Exception) {}
