@@ -878,7 +878,6 @@ class SerialFragment : Fragment() {
 
             // Update statistics
             binding.textStats.text = getString(
-                R.string.packets_saved_stat_text,
                 dataCounter,
                 dataManager.getRecordCount()
             )
@@ -988,8 +987,6 @@ class SerialFragment : Fragment() {
         super.onCreate(savedInstanceState)
         Log.d(TAG, "onCreate")
 
-
-
         // Get patient data from arguments
         arguments?.let {
             patientId = it.getString("patientId", "")
@@ -1004,6 +1001,7 @@ class SerialFragment : Fragment() {
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         Log.d(TAG, "onCreateView started")
+
         try {
             _binding = FragmentSerialBinding.inflate(inflater, container, false)
             Log.d(TAG, "Binding created successfully")

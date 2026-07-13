@@ -32,13 +32,30 @@ class PlotFragment : Fragment() {
     private val binding get() = _binding!!
 
     private lateinit var lineChart: LineChart
-    private var dataPoints = mutableListOf<DataManager.CapacitanceDataPoint>()
-    private val maxDisplayPoints = 200
+    private var allDataPoints = mutableListOf<DataManager.CapacitanceDataPoint>()
+    private val DISPLAY_POINTS = 200 // Number of points to display at once
     private val TAG = "PlotFragment"
     private var dataManager: DataManager? = null
     private var patientId = ""
     private var patientName = ""
     private var currentFilePath: String = ""
+
+    // Viewport tracking for scrolling
+    private var currentStartIndex = 0
+    private var currentEndIndex = 0
+    private var totalDataPoints = 0
+
+    // Custom value formatter for x-axis
+    private val xAxisFormatter = object : ValueFormatter() {
+        override fun getFormattedValue(value: Float): String {
+            val index = value.toInt()
+            return if (index >= 0 && index < allDataPoints.size) {
+                allDataPoints[index].formattedTime
+            } else {
+                ""
+            }
+        }
+    }
 
     // File picker for app's files
     private val filePickerLauncher = registerForActivityResult(
@@ -88,8 +105,9 @@ class PlotFragment : Fragment() {
             setupChart()
             setupButtons()
 
-            if (dataPoints.isNotEmpty()) {
+            if (allDataPoints.isNotEmpty()) {
                 updateChart()
+                updateScrollButtons()
             } else {
                 showEmptyState()
                 binding.textFileInfo.text = "Select a file to plot"
@@ -112,24 +130,23 @@ class PlotFragment : Fragment() {
                 setScaleEnabled(true)
                 setPinchZoom(true)
                 setBackgroundColor(Color.WHITE)
+                setDrawGridBackground(false)
+                setDrawBorders(false)
+
+                // Enable scrolling
+                setVisibleXRangeMaximum(DISPLAY_POINTS.toFloat())
+                setVisibleXRangeMinimum(10f)
 
                 xAxis.apply {
                     position = XAxis.XAxisPosition.BOTTOM
                     textColor = Color.BLACK
                     setDrawGridLines(true)
                     gridColor = Color.LTGRAY
-                    valueFormatter = object : ValueFormatter() {
-                        override fun getFormattedValue(value: Float): String {
-                            val index = value.toInt()
-                            return if (index >= 0 && index < dataPoints.size) {
-                                dataPoints[index].formattedTime
-                            } else {
-                                ""
-                            }
-                        }
-                    }
+                    valueFormatter = xAxisFormatter
                     granularity = 1f
-                    labelCount = 5
+                    labelCount = 10
+                    setAvoidFirstLastClipping(true)
+                    setDrawAxisLine(true)
                 }
 
                 axisLeft.apply {
@@ -140,6 +157,7 @@ class PlotFragment : Fragment() {
                     setDrawZeroLine(true)
                     zeroLineColor = Color.GRAY
                     zeroLineWidth = 1f
+                    setDrawAxisLine(true)
                 }
 
                 axisRight.isEnabled = false
@@ -147,10 +165,15 @@ class PlotFragment : Fragment() {
                 legend.apply {
                     isEnabled = true
                     textColor = Color.BLACK
+                    textSize = 10f
                 }
 
-                animateX(500)
-                animateY(500)
+                // Disable highlight for better performance
+                setMaxHighlightDistance(0f)
+
+                // Set viewport offsets
+                setViewPortOffsets(10f, 10f, 10f, 10f)
+                setExtraOffsets(5f, 5f, 5f, 5f)
             }
 
             showEmptyState()
@@ -166,10 +189,6 @@ class PlotFragment : Fragment() {
                 findNavController().navigateUp()
             }
 
-            // Remove real-time button - hide it
-//            binding.buttonRealTime.visibility = View.GONE
-
-            // Load File button shows app's files
             binding.buttonLoadFile.setOnClickListener {
                 try {
                     showAppFilesDialog()
@@ -190,15 +209,240 @@ class PlotFragment : Fragment() {
 
             binding.buttonZoomReset.setOnClickListener {
                 try {
+                    // Reset to show the first 200 points or all if less
+                    if (allDataPoints.size > DISPLAY_POINTS) {
+                        currentStartIndex = 0
+                        currentEndIndex = DISPLAY_POINTS
+                    } else {
+                        currentStartIndex = 0
+                        currentEndIndex = allDataPoints.size
+                    }
+                    updateChartWithRange(currentStartIndex, currentEndIndex)
+                    updateScrollButtons()
                     lineChart.fitScreen()
                 } catch (e: Exception) {
                     Log.e(TAG, "Error resetting zoom", e)
                 }
             }
 
+            // Navigation buttons for scrolling through data
+            binding.buttonScrollLeft.setOnClickListener {
+                scrollData(-DISPLAY_POINTS)
+            }
+
+            binding.buttonScrollRight.setOnClickListener {
+                scrollData(DISPLAY_POINTS)
+            }
+
+            // Initially hide scroll buttons if not needed
+            binding.buttonScrollLeft.visibility = View.GONE
+            binding.buttonScrollRight.visibility = View.GONE
+
         } catch (e: Exception) {
             Log.e(TAG, "Error setting up buttons", e)
         }
+    }
+
+    /**
+     * Scroll the data view by the specified amount
+     */
+    private fun scrollData(step: Int) {
+        if (allDataPoints.isEmpty() || allDataPoints.size <= DISPLAY_POINTS) return
+
+        var newStart = currentStartIndex + step
+        var newEnd = currentEndIndex + step
+
+        // Ensure we don't go out of bounds
+        if (newStart < 0) {
+            newStart = 0
+            newEnd = Math.min(DISPLAY_POINTS, allDataPoints.size)
+        }
+
+        if (newEnd > allDataPoints.size) {
+            newEnd = allDataPoints.size
+            newStart = Math.max(0, allDataPoints.size - DISPLAY_POINTS)
+        }
+
+        // Ensure we have at least some data to show
+        if (newEnd - newStart < 10) {
+            if (newStart > 0) {
+                newStart = Math.max(0, newEnd - 10)
+            } else {
+                newEnd = Math.min(allDataPoints.size, newStart + 10)
+            }
+        }
+
+        currentStartIndex = newStart
+        currentEndIndex = newEnd
+
+        updateChartWithRange(currentStartIndex, currentEndIndex)
+        updateScrollButtons()
+    }
+
+    /**
+     * Update chart with a specific range of data
+     */
+    private fun updateChartWithRange(startIndex: Int, endIndex: Int) {
+        try {
+            if (!isAdded || isDetached || allDataPoints.isEmpty()) {
+                return
+            }
+
+            // Ensure valid range
+            val safeStart = startIndex.coerceIn(0, allDataPoints.size - 1)
+            val safeEnd = endIndex.coerceIn(1, allDataPoints.size)
+
+            if (safeStart >= safeEnd) {
+                return
+            }
+
+            Log.d(TAG, "Updating chart: $safeStart to $safeEnd of ${allDataPoints.size}")
+
+            val entries = mutableListOf<Entry>()
+            for (i in safeStart until safeEnd) {
+                val point = allDataPoints[i]
+                // Adjust x-value to start from 0 for this viewport
+                entries.add(Entry((i - safeStart).toFloat(), point.capacitance.toFloat()))
+            }
+
+            if (entries.isEmpty()) {
+                showEmptyState()
+                return
+            }
+
+            // Create dataset with optimized settings
+            val dataSet = LineDataSet(entries, "Capacitance (pF)").apply {
+                color = Color.BLUE
+                setCircleColor(Color.BLUE)
+                lineWidth = 2f
+                circleRadius = 2f
+                setDrawCircleHole(false)
+                valueTextColor = Color.BLACK
+                valueTextSize = 8f
+                setDrawValues(false)
+                setDrawFilled(true)
+                fillColor = Color.argb(50, 0, 0, 255)
+                fillAlpha = 50
+                mode = LineDataSet.Mode.LINEAR
+                setDrawHorizontalHighlightIndicator(false)
+                setDrawVerticalHighlightIndicator(false)
+            }
+
+            val lineData = LineData(dataSet)
+            lineChart.data = lineData
+
+            // Set the visible range
+            lineChart.setVisibleXRangeMaximum(DISPLAY_POINTS.toFloat())
+
+            // Fit to screen to show all data in range
+            lineChart.fitScreen()
+
+            // Update info text
+            val infoText = """
+                Showing: ${safeStart + 1} - ${safeEnd} of ${allDataPoints.size} points
+                File: ${File(currentFilePath).name}
+            """.trimIndent()
+            binding.textFileInfo.text = infoText
+
+            // Update latest value if we're at the end
+            if (safeEnd == allDataPoints.size && allDataPoints.isNotEmpty()) {
+                val lastPoint = allDataPoints.last()
+                binding.textLatestValue.text = "Latest: ${lastPoint.capacitance} pF"
+            } else {
+                // Show the last value in the current view
+                val lastPoint = allDataPoints[safeEnd - 1]
+                binding.textLatestValue.text = "Last in view: ${lastPoint.capacitance} pF"
+            }
+
+            // Update statistics
+            dataManager?.let { dm ->
+                try {
+                    val stats = dm.getPlotStatistics()
+                    binding.textStats.text = stats.toString()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error getting statistics", e)
+                }
+            }
+
+            lineChart.invalidate()
+            currentStartIndex = safeStart
+            currentEndIndex = safeEnd
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating chart with range", e)
+        }
+    }
+
+    /**
+     * Update the scroll button visibility and states
+     */
+    private fun updateScrollButtons() {
+        if (allDataPoints.isEmpty() || allDataPoints.size <= DISPLAY_POINTS) {
+            binding.buttonScrollLeft.visibility = View.GONE
+            binding.buttonScrollRight.visibility = View.GONE
+            binding.textRangeInfo.visibility = View.GONE
+            return
+        }
+
+        binding.buttonScrollLeft.visibility = View.VISIBLE
+        binding.buttonScrollRight.visibility = View.VISIBLE
+        binding.textRangeInfo.visibility = View.VISIBLE
+
+        // Enable/disable buttons based on position
+        binding.buttonScrollLeft.isEnabled = currentStartIndex > 0
+        binding.buttonScrollRight.isEnabled = currentEndIndex < allDataPoints.size
+
+        // Update button text with positions
+        binding.buttonScrollLeft.text = "◀ ${currentStartIndex + 1}"
+        binding.buttonScrollRight.text = "${currentEndIndex} ▶"
+
+        // Update info text with range
+        val rangeText = "Showing: ${currentStartIndex + 1} - ${currentEndIndex} of ${allDataPoints.size}"
+        binding.textRangeInfo.text = rangeText
+    }
+
+    // ==================== FILE LOADING FUNCTIONS ====================
+
+    /**
+     * Load all data from a CSV file
+     */
+    private fun loadAllDataFromFile(file: File): List<DataManager.CapacitanceDataPoint> {
+        val points = mutableListOf<DataManager.CapacitanceDataPoint>()
+        try {
+            file.bufferedReader().use { reader ->
+                // Skip header if exists
+                var firstLine = true
+                reader.forEachLine { line ->
+                    if (firstLine) {
+                        // Check if it's a header
+                        if (line.contains("timestamp") || line.contains("time") || line.contains("capacitance")) {
+                            firstLine = false
+                            return@forEachLine
+                        }
+                        firstLine = false
+                    }
+
+                    try {
+                        val parts = line.split(" ")
+                        if (parts.size >= 2) {
+                            val timestamp = parts[0].toLongOrNull()
+                            val capacitance = parts[1].toDoubleOrNull()
+                            if (timestamp != null && capacitance != null) {
+                                val date = Date(timestamp)
+                                val formattedTime = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(date)
+                                points.add(DataManager.CapacitanceDataPoint(timestamp, capacitance, formattedTime))
+                            }
+                        }
+                    } catch (e: Exception) {
+                        // Skip invalid lines
+                    }
+                }
+            }
+            Log.d(TAG, "Loaded ${points.size} data points from file")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading data from file", e)
+        }
+        return points
     }
 
     /**
@@ -235,6 +479,7 @@ class PlotFragment : Fragment() {
                 Log.d(TAG, "Auto-loaded latest file: ${latestFile.name}")
             } else {
                 Log.d(TAG, "No files found to load")
+                showEmptyState()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error loading latest file", e)
@@ -291,7 +536,6 @@ class PlotFragment : Fragment() {
         try {
             val serialDataDir = getSerialDataDirectory()
 
-            // Create intent to open the folder
             val intent = Intent(Intent.ACTION_VIEW)
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
@@ -331,18 +575,15 @@ class PlotFragment : Fragment() {
      */
     private fun handleFilePickerResult(uri: Uri) {
         try {
-            // Try to get the file from the URI
             val documentFile = DocumentFile.fromSingleUri(requireContext(), uri)
             if (documentFile != null && documentFile.exists()) {
                 val fileName = documentFile.name ?: "unknown_file"
                 val content = requireContext().contentResolver.openInputStream(uri)?.bufferedReader()?.readText()
 
                 if (content != null && content.isNotEmpty()) {
-                    // If it's not already in our app's directory, copy it
                     val serialDataDir = getSerialDataDirectory()
                     val destFile = File(serialDataDir, fileName)
 
-                    // Check if it's already in our directory
                     if (!destFile.absolutePath.equals(documentFile.uri.path)) {
                         destFile.writeText(content)
                         Toast.makeText(requireContext(), "File copied to app storage: $fileName", Toast.LENGTH_SHORT).show()
@@ -363,7 +604,7 @@ class PlotFragment : Fragment() {
     }
 
     /**
-     * Load file from path
+     * Load file from path - NOW LOADS ALL DATA
      */
     private fun loadFileFromPath(filePath: String) {
         try {
@@ -374,24 +615,46 @@ class PlotFragment : Fragment() {
                 return
             }
 
-            dataManager?.let { dm ->
-                dm.loadPlotDataFromFile(file)
-                dataPoints = dm.getPlotDataPoints(maxDisplayPoints).toMutableList()
+            // Load ALL data directly from file
+            val allPoints = loadAllDataFromFile(file)
+
+            if (allPoints.isNotEmpty()) {
+                allDataPoints.clear()
+                allDataPoints.addAll(allPoints)
+
+                // Sort by timestamp if needed
+                allDataPoints.sortBy { it.timestamp }
+
+                Log.d(TAG, "Loaded ${allDataPoints.size} total data points")
 
                 val displayText = """
                     File: ${file.name}
-                    Points: ${dataPoints.size}
+                    Total Points: ${allDataPoints.size}
                     Size: ${formatFileSize(file.length())}
                 """.trimIndent()
                 binding.textFileInfo.text = displayText
 
-                if (dataPoints.isNotEmpty()) {
-                    updateChart()
-                    Toast.makeText(requireContext(), "Loaded ${dataPoints.size} data points", Toast.LENGTH_SHORT).show()
+                // Reset viewport
+                currentStartIndex = 0
+                currentEndIndex = if (allDataPoints.size > DISPLAY_POINTS) {
+                    DISPLAY_POINTS
                 } else {
-                    Toast.makeText(requireContext(), "No valid data points found in file", Toast.LENGTH_SHORT).show()
-                    showEmptyState()
+                    allDataPoints.size
                 }
+
+                // Update the DataManager with the loaded data (optional)
+                dataManager?.let { dm ->
+                    // You might want to add a method to set data directly
+                    // For now, we'll just use the loaded data
+                }
+
+                updateChartWithRange(currentStartIndex, currentEndIndex)
+                updateScrollButtons()
+
+                Toast.makeText(requireContext(), "Loaded ${allDataPoints.size} data points", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(requireContext(), "No valid data points found in file", Toast.LENGTH_SHORT).show()
+                showEmptyState()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error loading file from path", e)
@@ -411,89 +674,25 @@ class PlotFragment : Fragment() {
         }
     }
 
+    // ==================== UI STATE FUNCTIONS ====================
+
     private fun updateChart() {
-        try {
-            if (!isAdded || isDetached) {
-                return
-            }
-
-            val entries = mutableListOf<Entry>()
-            val startIndex = if (dataPoints.size > maxDisplayPoints) {
-                dataPoints.size - maxDisplayPoints
-            } else {
-                0
-            }
-
-            for (i in startIndex until dataPoints.size) {
-                val point = dataPoints[i]
-                entries.add(Entry((i - startIndex).toFloat(), point.capacitance.toFloat()))
-            }
-
-            if (entries.isEmpty()) {
-                showEmptyState()
-                return
-            }
-
-            val dataSet = LineDataSet(entries, "Capacitance (pF)").apply {
-                color = Color.BLUE
-                setCircleColor(Color.BLUE)
-                lineWidth = 2f
-                circleRadius = 3f
-                setDrawCircleHole(false)
-                valueTextColor = Color.BLACK
-                valueTextSize = 10f
-                setDrawValues(false)
-                setDrawFilled(true)
-                fillColor = Color.argb(50, 0, 0, 255)
-                fillAlpha = 50
-            }
-
-            val lineData = LineData(dataSet)
-            lineChart.data = lineData
-
-            // Update latest value
-            if (dataPoints.isNotEmpty()) {
-                val point = dataPoints.last()
-                binding.textLatestValue.text = "Latest: ${point.capacitance} pF"
-
-                val patientInfo = if (patientName.isNotEmpty()) {
-                    " | Patient: $patientName"
-                } else {
-                    ""
-                }
-                val fileInfo = if (currentFilePath.isNotEmpty()) {
-                    " | File: ${File(currentFilePath).name}"
-                } else {
-                    ""
-                }
-                binding.textFileInfo.text = "Points: ${dataPoints.size}$patientInfo$fileInfo"
-            }
-
-            // Update statistics
-            dataManager?.let { dm ->
-                try {
-                    val stats = dm.getPlotStatistics()
-                    binding.textStats.text = stats.toString()
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error getting statistics", e)
-                }
-            }
-
-            lineChart.invalidate()
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Error updating chart", e)
-        }
+        // Update chart with current range
+        updateChartWithRange(currentStartIndex, currentEndIndex)
     }
 
     private fun showEmptyState() {
         try {
+            allDataPoints.clear()
             val emptyData = LineData()
             lineChart.data = emptyData
             lineChart.invalidate()
             binding.textFileInfo.text = "No data loaded. Click 'Load File' to select a file."
             binding.textLatestValue.text = "Latest: --"
             binding.textStats.text = "Min: -- | Max: -- | Avg: -- | Median: -- | Count: 0"
+            binding.textRangeInfo.visibility = View.GONE
+            binding.buttonScrollLeft.visibility = View.GONE
+            binding.buttonScrollRight.visibility = View.GONE
         } catch (e: Exception) {
             Log.e(TAG, "Error showing empty state", e)
         }
@@ -501,8 +700,10 @@ class PlotFragment : Fragment() {
 
     private fun clearData() {
         try {
-            dataPoints.clear()
+            allDataPoints.clear()
             currentFilePath = ""
+            currentStartIndex = 0
+            currentEndIndex = 0
             dataManager?.clearPlotData()
             showEmptyState()
             Toast.makeText(requireContext(), "Data cleared", Toast.LENGTH_SHORT).show()
