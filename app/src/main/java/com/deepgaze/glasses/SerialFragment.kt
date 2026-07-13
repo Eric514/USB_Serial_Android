@@ -368,6 +368,7 @@ class SerialFragment : Fragment() {
                 findNavController().navigateUp()
             }
             binding.buttonPlot.setOnClickListener {
+                dataCounter = 0
                 navigateToPlot()
             }
             binding.buttonStorageManager.setOnClickListener {
@@ -530,7 +531,6 @@ class SerialFragment : Fragment() {
             executor?.submit { serialIoManager?.start() }
 
             isReceiving = true
-            dataCounter = 0
             binding.buttonConnect.text = getString(R.string.stop_receiving_button_text)
             updateStatus("Receiving data...")
             Log.d(TAG, "Receiving started")
@@ -825,7 +825,6 @@ class SerialFragment : Fragment() {
             limited.joinToString("\n") + "\n$formattedData"
         }
         binding.textDataDisplay.text = newText
-        dataCounter++
 
         // Scroll to bottom of TextView
         binding.textDataDisplay.post {
@@ -875,12 +874,6 @@ class SerialFragment : Fragment() {
 
             // This will automatically add to plot data as well
             dataManager.saveRecord(record)
-
-            // Update statistics
-            binding.textStats.text = getString(
-                dataCounter,
-                dataManager.getRecordCount()
-            )
 
         } catch (e: Exception) {
             Log.e(TAG, "Error saving data", e)
