@@ -246,7 +246,7 @@
                             android:layout_width="0dp"
                             android:layout_height="38dp"
                             android:layout_weight="1"
-                            android:text="@string/button_connect"
+                            android:text="@string/receiving_button_text"
                             android:enabled="false"
                             android:layout_marginEnd="4dp"
                             android:textSize="13sp"

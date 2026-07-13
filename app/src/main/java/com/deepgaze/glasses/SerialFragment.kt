@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.res.ColorStateList
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.os.Build
@@ -38,6 +39,7 @@ import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.data.LineData
 import androidx.core.widget.NestedScrollView
 import android.text.method.ScrollingMovementMethod
+import androidx.core.graphics.toColorInt
 
 
 class SerialFragment : Fragment() {
@@ -69,6 +71,10 @@ class SerialFragment : Fragment() {
     // Message delimiters - customize based on your device
     private val MESSAGE_DELIMITERS = listOf("\n", "\r\n", "\r", ";", "\t")
     private var customDelimiter: String? = null
+
+    // Connect Button Color
+
+    var colorInt = "#4CAF50".toColorInt()
 
     // Patient data
     private var patientId = ""
@@ -530,6 +536,8 @@ class SerialFragment : Fragment() {
             executor?.submit { serialIoManager?.start() }
 
             isReceiving = true
+            colorInt = "#8b0000".toColorInt()
+            binding.buttonConnect.backgroundTintList = ColorStateList.valueOf(colorInt)
             binding.buttonConnect.text = getString(R.string.stop_receiving_button_text)
             updateStatus("Receiving data...")
             Log.d(TAG, "Receiving started")
@@ -548,6 +556,8 @@ class SerialFragment : Fragment() {
         serialIoManager = null
         executor?.shutdownNow()
         executor = null
+        colorInt = "#4CAF50".toColorInt()
+        binding.buttonConnect.backgroundTintList = ColorStateList.valueOf(colorInt)
         binding.buttonConnect.text = getString(R.string.receiving_button_text)
         updateStatus("Stopped receiving")
     }
@@ -561,7 +571,6 @@ class SerialFragment : Fragment() {
         } catch (_: Exception) {}
         serialPort = null
         isConnected = false
-        binding.buttonConnect.text = getString(R.string.connect_text)
         binding.textDataDisplay.text = getString(R.string.disconnected_text)
         updateStatus("Disconnected")
         enableSpinners(true)

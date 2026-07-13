@@ -12,11 +12,9 @@
     <string name="label_data">Data:</string>
     <string name="label_stop">Stop:</string>
     <string name="label_parity">Parity:</string>
-    <string name="button_connect">Connect</string>
-    <string name="button_disconnect">Disconnect</string>
-    <string name="button_start">Start</string>
+    <string name="button_disconnect">Reset Device</string>
+    <string name="button_start">Start Recording</string>
     <string name="button_stop">Stop</string>
-    <string name="button_start_receiving">Start Receiving</string>
     <string name="button_stop_receiving">Stop Receiving</string>
     <string name="title_data_actions">📊 Data Actions</string>
     <string name="button_plot">📊 Plot</string>
@@ -28,7 +26,7 @@
     <string name="connect_text">Connect</string>
     <string name="disconnected_text">Disconnected</string>
     <string name="receiving_button_text">Start Receiving</string>
-    <string name="stop_receiving_button_text">Stop Receiving</string>
+    <string name="stop_receiving_button_text">Stop Recording</string>
     <string name="packets_counter">Packets: %d</string>
     <string name="packets_saved_stat_text">Packets: %d | Saved: %d</string>
     <string name="on_connect_info_display">%s\n\n%s</string>
