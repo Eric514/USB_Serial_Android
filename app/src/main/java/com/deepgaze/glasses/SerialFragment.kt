@@ -5,7 +5,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.graphics.Color
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.os.Build
@@ -23,9 +22,6 @@ import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
 import com.deepgaze.glasses.databinding.FragmentSerialBinding
 import com.github.mikephil.charting.charts.LineChart
-import com.github.mikephil.charting.components.XAxis
-import com.github.mikephil.charting.data.Entry
-import com.github.mikephil.charting.data.LineData
 import com.github.mikephil.charting.data.LineDataSet
 import com.hoho.android.usbserial.driver.UsbSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialPort
@@ -36,7 +32,13 @@ import java.util.concurrent.Executors
 import java.io.File
 import java.io.FileWriter
 import java.text.SimpleDateFormat
-import kotlin.collections.ArrayList
+import android.graphics.Color
+import com.github.mikephil.charting.components.XAxis
+import com.github.mikephil.charting.data.Entry
+import com.github.mikephil.charting.data.LineData
+import androidx.core.widget.NestedScrollView
+import android.text.method.ScrollingMovementMethod
+
 
 class SerialFragment : Fragment() {
     private var _binding: FragmentSerialBinding? = null
@@ -57,27 +59,14 @@ class SerialFragment : Fragment() {
     private val dateFormat = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault())
 
     private val dataBuffer = StringBuilder()
+    private val messageQueue = mutableListOf<String>()
     private var isProcessingQueue = false
     private var lastDataTime = 0L
-    private val TIMEOUT_MS = 100L
-    private val MIN_MESSAGE_LENGTH = 2
-    private val MAX_BUFFER_SIZE = 1024 * 1024
+    private val TIMEOUT_MS = 100L // Time to wait for complete message
+    private val MIN_MESSAGE_LENGTH = 2 // Minimum characters for a valid message
+    private val MAX_BUFFER_SIZE = 1024 * 1024 // 1MB max buffer size
 
-    // Graph related variables - OPTIMIZED
-    private lateinit var lineChart: LineChart
-    private lateinit var lineDataSet: LineDataSet
-    private val graphDataPoints = mutableListOf<Entry>()
-    private val MAX_GRAPH_POINTS = 100
-    private var showGraph = false
-    private var isGraphUpdating = false
-    private var graphUpdateCounter = 0
-    private var pendingGraphUpdate = false
-
-    // Cache for graph data to avoid repeated object creation
-    private val entryCache = mutableListOf<Entry>()
-    private val valueCache = mutableListOf<Float>()
-
-    // Message delimiters
+    // Message delimiters - customize based on your device
     private val MESSAGE_DELIMITERS = listOf("\n", "\r\n", "\r", ";", "\t")
     private var customDelimiter: String? = null
 
@@ -99,12 +88,39 @@ class SerialFragment : Fragment() {
     private lateinit var ACTION_USB_PERMISSION: String
     private val TAG = "SerialFragment"
 
-    // Data Save to Data Manager
+    // ==================== OPTIMIZED GRAPH VARIABLES ====================
+    // Use FloatArray for better performance
+    private val graphValues = FloatArray(100)
+    private var graphValueCount = 0
+    private var graphIndex = 0
+    private val MAX_GRAPH_POINTS = 50
+
+    // Chart components
+    private lateinit var lineChart: LineChart
+    private lateinit var lineDataSet: LineDataSet
+
+    // Graph state
+    private var showGraph = false
+    private var isGraphUpdating = false
+    private var isChartInitialized = false
+    private var pendingGraphUpdate = false
+    private var graphUpdateCounter = 0
+
+    // Cache for numeric values
+    private val valueCache = FloatArray(5)
+    private var valueCacheSize = 0
+    private val BATCH_SIZE = 3
+
+    // Graph update interval
+    private var lastGraphUpdateTime = 0L
+    private val GRAPH_UPDATE_INTERVAL_MS = 200L
+
+    //Data Save to Data Manager
     private lateinit var dataManager: DataManager
     private var isSavingEnabled = true
     private var currentDataBuffer = StringBuilder()
     private var lastSaveTime = 0L
-    private val SAVE_INTERVAL_MS = 5000L
+    private val SAVE_INTERVAL_MS = 5000L // Save at most every 5 seconds
 
     // ==================== DECLARE ALL FUNCTIONS FIRST ====================
 
@@ -113,18 +129,23 @@ class SerialFragment : Fragment() {
             val text = String(data, Charsets.UTF_8)
             Log.d(TAG, "Raw data received: $text")
 
+            // Append to buffer
             dataBuffer.append(text)
 
+            // Check buffer size - prevent memory issues
             if (dataBuffer.length > MAX_BUFFER_SIZE) {
                 Log.w(TAG, "Buffer size exceeded, clearing")
                 dataBuffer.clear()
                 return
             }
 
+            // Try to extract complete messages
             extractMessages()
 
+            // If we have data in buffer and no newline yet, wait for more data
             if (dataBuffer.isNotEmpty()) {
                 Log.d(TAG, "Buffer has ${dataBuffer.length} chars waiting for complete message")
+                // Schedule a timeout to process incomplete data
                 scheduleBufferTimeout()
             }
 
@@ -136,17 +157,25 @@ class SerialFragment : Fragment() {
     private fun extractMessages() {
         if (dataBuffer.isEmpty()) return
 
+        var processed = 0
+
+        // Try each delimiter
         for (delimiter in MESSAGE_DELIMITERS) {
             var index: Int
 
             while (dataBuffer.indexOf(delimiter).also { index = it } != -1) {
+                // Extract message including delimiter
                 val endPos = index + delimiter.length
                 val message = dataBuffer.substring(0, endPos).trim()
+
+                // Remove from buffer
                 dataBuffer.delete(0, endPos)
 
+                // Process if it's a valid message
                 if (message.isNotEmpty() && message.length >= MIN_MESSAGE_LENGTH) {
                     Log.d(TAG, "Complete message extracted: $message")
                     handleCompleteMessage(message)
+                    processed++
                 } else if (message.isNotEmpty()) {
                     Log.d(TAG, "Message too short, ignoring: $message")
                 }
@@ -154,18 +183,34 @@ class SerialFragment : Fragment() {
         }
     }
 
+    /**
+     * Handle a complete message
+     */
     private fun handleCompleteMessage(message: String) {
+        // Clean the message - remove extra whitespace
         val cleanMessage = message.trim()
+
+        // Add to display
         displayData(cleanMessage)
+
+        // Save to storage
         saveSerialData(cleanMessage)
+
+        // Update counter
         dataCounter++
     }
 
+    /**
+     * Schedule a timeout to process any pending buffer data
+     */
     private fun scheduleBufferTimeout() {
         handler.removeCallbacks(bufferTimeoutRunnable)
         handler.postDelayed(bufferTimeoutRunnable, TIMEOUT_MS)
     }
 
+    /**
+     * Runnable to handle buffer timeout
+     */
     private val bufferTimeoutRunnable = Runnable {
         if (dataBuffer.isNotEmpty()) {
             Log.d(TAG, "Buffer timeout - processing remaining data: ${dataBuffer.length} chars")
@@ -173,6 +218,7 @@ class SerialFragment : Fragment() {
             dataBuffer.clear()
 
             if (remainingData.isNotEmpty() && remainingData.length >= MIN_MESSAGE_LENGTH) {
+                // If there's a custom delimiter, try to split
                 if (customDelimiter != null) {
                     val parts = remainingData.split(customDelimiter!!)
                     parts.forEach { part ->
@@ -190,7 +236,7 @@ class SerialFragment : Fragment() {
     private fun updateStatus(text: String) {
         handler.post {
             try {
-                binding.textStatus.text = "Status: $text"
+                binding.textStatus.text = getString(R.string.status_text, text)
             } catch (e: Exception) {
                 Log.e(TAG, "updateStatus error", e)
             }
@@ -316,6 +362,7 @@ class SerialFragment : Fragment() {
         try {
             binding.buttonConnect.setOnClickListener { toggleConnection() }
             binding.buttonDisconnect.setOnClickListener { disconnect() }
+            binding.buttonToggleView.setOnClickListener { toggleView() }
             binding.buttonRefresh.setOnClickListener { refreshDeviceList() }
             binding.buttonBack.setOnClickListener {
                 findNavController().navigateUp()
@@ -326,186 +373,9 @@ class SerialFragment : Fragment() {
             binding.buttonStorageManager.setOnClickListener {
                 findNavController().navigate(R.id.action_serialFragment_to_folderViewerFragment)
             }
-
-            // Toggle view button
-            binding.buttonToggleView.setOnClickListener {
-                toggleView()
-            }
-
             Log.d(TAG, "Buttons setup done")
         } catch (e: Exception) {
             Log.e(TAG, "Error setting up buttons", e)
-        }
-    }
-
-    private fun setupChart() {
-        try {
-            lineChart = binding.lineChart
-
-            // Performance optimizations for the chart
-            lineChart.apply {
-                description.isEnabled = false
-                setTouchEnabled(true)
-                isDragEnabled = true
-                setScaleEnabled(true)
-                setPinchZoom(true)
-                setBackgroundColor(Color.WHITE)
-
-                // Performance improvements
-                setDrawGridBackground(false)
-                setDrawBorders(false)
-                setMaxHighlightDistance(0f) // Disable highlighting for performance
-                setScaleYEnabled(true)
-                setScaleXEnabled(true)
-                setHardwareAccelerationEnabled(false)
-
-                xAxis.apply {
-                    position = XAxis.XAxisPosition.BOTTOM
-                    textColor = Color.BLACK
-                    setDrawGridLines(true)
-                    gridColor = Color.LTGRAY
-                    setDrawLabels(true)
-                    granularity = 1f
-                    labelCount = 5
-                    setDrawAxisLine(true)
-                }
-
-                axisLeft.apply {
-                    textColor = Color.BLACK
-                    setDrawGridLines(true)
-                    gridColor = Color.LTGRAY
-                    axisMinimum = 0f
-                    setDrawZeroLine(true)
-                    zeroLineColor = Color.GRAY
-                    zeroLineWidth = 1f
-                }
-
-                axisRight.isEnabled = false
-
-                legend.apply {
-                    isEnabled = true
-                    textColor = Color.BLACK
-                }
-            }
-
-            // Create dataset once and reuse it
-            lineDataSet = LineDataSet(emptyList(), "Capacitance (pF)").apply {
-                color = Color.BLUE
-                setCircleColor(Color.BLUE)
-                lineWidth = 2f
-                circleRadius = 2f
-                setDrawCircleHole(false)
-                valueTextColor = Color.BLACK
-                valueTextSize = 8f
-                setDrawValues(false)
-                setDrawFilled(true)
-                fillColor = Color.argb(50, 0, 0, 255)
-                fillAlpha = 50
-                mode = LineDataSet.Mode.LINEAR
-            }
-
-            val lineData = LineData(lineDataSet)
-            lineChart.data = lineData
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Error setting up chart", e)
-        }
-    }
-
-    private fun toggleView() {
-        showGraph = !showGraph
-
-        if (showGraph) {
-            // Show graph, hide text display
-            binding.scrollView.visibility = View.GONE
-            binding.graphContainer.visibility = View.VISIBLE
-            binding.buttonToggleView.text = "Switch to Data"
-
-            // Initialize chart if needed
-            if (!this::lineChart.isInitialized) {
-                setupChart()
-            }
-
-            // Update graph with latest data
-            updateGraph()
-
-            Log.d(TAG, "Graph view enabled - updating with ${graphDataPoints.size} points")
-
-        } else {
-            // Show text display, hide graph
-            binding.graphContainer.visibility = View.GONE
-            binding.scrollView.visibility = View.VISIBLE
-            binding.buttonToggleView.text = "Switch to Graph"
-
-            Log.d(TAG, "Graph view disabled")
-        }
-    }
-
-    private fun updateGraph() {
-        // ONLY update if graph is visible
-        if (!showGraph) {
-            pendingGraphUpdate = false
-            return
-        }
-
-        try {
-            if (!this::lineChart.isInitialized || !this::lineDataSet.isInitialized) return
-            if (isGraphUpdating) return
-            if (graphDataPoints.isEmpty()) {
-                // Clear the graph
-                val emptyData = LineData(lineDataSet)
-                lineChart.data = emptyData
-                lineChart.invalidate()
-                return
-            }
-
-            isGraphUpdating = true
-            pendingGraphUpdate = false
-
-            try {
-                // Reuse the dataset instead of creating new one
-                lineDataSet.values = graphDataPoints
-
-                // Notify the chart of changes
-                lineDataSet.notifyDataSetChanged()
-
-                // Create new data object with the updated dataset
-                val lineData = LineData(lineDataSet)
-                lineChart.data = lineData
-
-                // Only animate if not too frequent
-                if (graphUpdateCounter % 5 == 0) {
-                    lineChart.animateX(100)
-                }
-
-                lineChart.invalidate()
-                graphUpdateCounter++
-
-            } finally {
-                isGraphUpdating = false
-            }
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Error updating graph", e)
-            isGraphUpdating = false
-        }
-    }
-
-    // Schedule a graph update if graph is visible
-    private fun scheduleGraphUpdate() {
-        if (showGraph && !isGraphUpdating) {
-            // If there's a pending update, just update now
-            if (pendingGraphUpdate) {
-                updateGraph()
-            } else {
-                // Schedule update for next frame
-                pendingGraphUpdate = true
-                handler.postDelayed({
-                    if (pendingGraphUpdate && showGraph) {
-                        updateGraph()
-                    }
-                }, 50) // Small delay to batch updates
-            }
         }
     }
 
@@ -614,8 +484,9 @@ class SerialFragment : Fragment() {
 
             isConnected = true
             updateStatus("Connected at $selectedBaudRate baud")
-            binding.buttonConnect.text = "Start Receiving"
+            binding.buttonConnect.text = getString(R.string.receiving_button_text)
 
+            // Disable configuration spinners when connected
             enableSpinners(false)
 
             val configInfo = """
@@ -629,8 +500,10 @@ class SerialFragment : Fragment() {
                 ⏳ Waiting for data...
             """.trimIndent()
 
+            // Display patient info with connection
             val patientInfo = getPatientDataSummary()
-            binding.textDataDisplay.text = "$patientInfo\n\n$configInfo"
+            binding.textDataDisplay.text =
+                getString(R.string.on_connect_info_display, patientInfo, configInfo)
 
             Toast.makeText(requireContext(), "✅ Connected to USB device", Toast.LENGTH_SHORT).show()
             Log.d(TAG, "Device opened successfully")
@@ -658,14 +531,8 @@ class SerialFragment : Fragment() {
 
             isReceiving = true
             dataCounter = 0
-            binding.buttonConnect.text = "Stop Receiving"
+            binding.buttonConnect.text = getString(R.string.stop_receiving_button_text)
             updateStatus("Receiving data...")
-
-            // Clear graph data when starting
-            graphDataPoints.clear()
-            valueCache.clear()
-            pendingGraphUpdate = false
-
             Log.d(TAG, "Receiving started")
 
         } catch (e: Exception) {
@@ -682,7 +549,7 @@ class SerialFragment : Fragment() {
         serialIoManager = null
         executor?.shutdownNow()
         executor = null
-        binding.buttonConnect.text = "Start Receiving"
+        binding.buttonConnect.text = getString(R.string.receiving_button_text)
         updateStatus("Stopped receiving")
     }
 
@@ -694,20 +561,10 @@ class SerialFragment : Fragment() {
         } catch (_: Exception) {}
         serialPort = null
         isConnected = false
-        binding.buttonConnect.text = "Connect"
-        binding.textDataDisplay.text = "Disconnected"
+        binding.buttonConnect.text = getString(R.string.connect_text)
+        binding.textDataDisplay.text = getString(R.string.disconnected_text)
         updateStatus("Disconnected")
         enableSpinners(true)
-
-        // Clear graph data
-        graphDataPoints.clear()
-        valueCache.clear()
-        pendingGraphUpdate = false
-
-        if (this::lineChart.isInitialized && this::lineDataSet.isInitialized) {
-            lineDataSet.values = emptyList()
-            lineChart.invalidate()
-        }
     }
 
     private fun updateSerialParameters() {
@@ -754,30 +611,203 @@ class SerialFragment : Fragment() {
         }
     }
 
-    // Add data to graph - only stores data, doesn't update UI
-    private fun addDataToGraph(value: Float) {
-        val newEntry = Entry(graphDataPoints.size.toFloat(), value)
-        graphDataPoints.add(newEntry)
+    private fun setupChart() {
+        try {
+            lineChart = binding.lineChart
 
-        // Keep only last MAX_GRAPH_POINTS
-        if (graphDataPoints.size > MAX_GRAPH_POINTS) {
-            val removeCount = graphDataPoints.size - MAX_GRAPH_POINTS
-            for (i in 0 until removeCount) {
-                graphDataPoints.removeAt(0)
+            lineChart.apply {
+                description.isEnabled = false
+                setTouchEnabled(true)
+                isDragEnabled = true
+                setScaleEnabled(true)
+                setPinchZoom(true)
+                setBackgroundColor(Color.WHITE)
+                setDrawGridBackground(false)
+                setDrawBorders(false)
+                setMaxHighlightDistance(0f)
+                setScaleYEnabled(true)
+                setScaleXEnabled(true)
+                setHardwareAccelerationEnabled(false)
+
+                xAxis.apply {
+                    position = XAxis.XAxisPosition.BOTTOM
+                    textColor = Color.BLACK
+                    setDrawGridLines(true)
+                    gridColor = Color.LTGRAY
+                    setDrawLabels(true)
+                    granularity = 1f
+                    labelCount = 5
+                    setDrawAxisLine(true)
+                    setAvoidFirstLastClipping(true)
+                }
+
+                axisLeft.apply {
+                    textColor = Color.BLACK
+                    setDrawGridLines(true)
+                    gridColor = Color.LTGRAY
+                    axisMinimum = 0f
+                    setDrawZeroLine(true)
+                    zeroLineColor = Color.GRAY
+                    zeroLineWidth = 1f
+                }
+
+                axisRight.isEnabled = false
+                legend.apply {
+                    isEnabled = true
+                    textColor = Color.BLACK
+                    textSize = 10f
+                }
+
+                // Performance optimization
+                setViewPortOffsets(10f, 10f, 10f, 10f)
+                setExtraOffsets(5f, 5f, 5f, 5f)
             }
-            // Renumber entries to maintain correct indices
-            renumberEntries()
-        }
 
-        // Schedule graph update ONLY if graph is visible
-        if (showGraph) {
-            scheduleGraphUpdate()
+            // Create dataset
+            lineDataSet = LineDataSet(emptyList(), "Capacitance (pF)").apply {
+                color = Color.BLUE
+                setCircleColor(Color.BLUE)
+                lineWidth = 2f
+                circleRadius = 2f
+                setDrawCircleHole(false)
+                valueTextColor = Color.BLACK
+                valueTextSize = 8f
+                setDrawValues(false)
+                setDrawFilled(true)
+                fillColor = Color.argb(80, 0, 0, 255)
+                fillAlpha = 80
+                mode = LineDataSet.Mode.LINEAR
+                setDrawHorizontalHighlightIndicator(false)
+                setDrawVerticalHighlightIndicator(false)
+            }
+
+            lineChart.data = LineData(lineDataSet)
+            lineChart.invalidate()
+            isChartInitialized = true
+
+            Log.d(TAG, "Chart setup complete")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error setting up chart", e)
+            isChartInitialized = false
         }
     }
 
-    private fun renumberEntries() {
-        for (i in graphDataPoints.indices) {
-            graphDataPoints[i].x = i.toFloat()
+    private fun toggleView() {
+        try {
+            showGraph = !showGraph
+
+            if (showGraph) {
+                // Show graph, hide text display
+                binding.textDataDisplay.visibility = View.GONE
+                binding.graphContainer.visibility = View.VISIBLE
+                binding.buttonToggleView.text = "Switch to Data"
+
+                if (!isChartInitialized) {
+                    setupChart()
+                }
+
+                handler.postDelayed({
+                    updateGraphImmediate()
+                }, 50)
+
+            } else {
+                // Show text display, hide graph
+                binding.graphContainer.visibility = View.GONE
+                binding.textDataDisplay.visibility = View.VISIBLE
+                binding.buttonToggleView.text = "Switch to Graph"
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error toggling view", e)
+            showGraph = false
+            binding.graphContainer.visibility = View.GONE
+            binding.textDataDisplay.visibility = View.VISIBLE
+            binding.buttonToggleView.text = "Switch to Graph"
+        }
+    }
+
+    private fun updateGraphImmediate() {
+        if (!showGraph || !isChartInitialized || graphValueCount == 0) {
+            if (isChartInitialized && ::lineChart.isInitialized) {
+                lineDataSet.values = emptyList()
+                lineChart.invalidate()
+            }
+            return
+        }
+
+        if (isGraphUpdating) return
+
+        try {
+            isGraphUpdating = true
+
+            // Build entries from primitive array
+            val entries = mutableListOf<Entry>()
+            val start = if (graphValueCount > MAX_GRAPH_POINTS) {
+                graphValueCount - MAX_GRAPH_POINTS
+            } else 0
+
+            for (i in start until graphValueCount) {
+                val idx = (graphIndex + i) % MAX_GRAPH_POINTS
+                entries.add(Entry((i - start).toFloat(), graphValues[idx]))
+            }
+
+            lineDataSet.values = entries
+            lineDataSet.notifyDataSetChanged()
+
+            val lineData = LineData(lineDataSet)
+            lineChart.data = lineData
+
+            if (graphUpdateCounter % 5 == 0 && entries.isNotEmpty()) {
+                lineChart.animateX(100)
+            }
+
+            lineChart.invalidate()
+            graphUpdateCounter++
+            pendingGraphUpdate = false
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating graph", e)
+        } finally {
+            isGraphUpdating = false
+        }
+    }
+
+    private fun scheduleGraphUpdate() {
+        if (!showGraph || !isChartInitialized || isGraphUpdating) return
+
+        val now = System.currentTimeMillis()
+        if (now - lastGraphUpdateTime < GRAPH_UPDATE_INTERVAL_MS) {
+            if (!pendingGraphUpdate) {
+                pendingGraphUpdate = true
+                handler.postDelayed({
+                    if (pendingGraphUpdate && showGraph) {
+                        updateGraphImmediate()
+                        pendingGraphUpdate = false
+                        lastGraphUpdateTime = System.currentTimeMillis()
+                    }
+                }, GRAPH_UPDATE_INTERVAL_MS)
+            }
+            return
+        }
+
+        if (pendingGraphUpdate) {
+            updateGraphImmediate()
+        } else {
+            pendingGraphUpdate = true
+            updateGraphImmediate()
+        }
+        lastGraphUpdateTime = now
+    }
+
+    private fun addDataToGraph(value: Float) {
+        graphValues[graphIndex] = value
+        graphIndex = (graphIndex + 1) % MAX_GRAPH_POINTS
+        if (graphValueCount < MAX_GRAPH_POINTS) {
+            graphValueCount++
+        }
+
+        if (showGraph && isChartInitialized) {
+            scheduleGraphUpdate()
         }
     }
 
@@ -785,6 +815,7 @@ class SerialFragment : Fragment() {
         val timestamp = dateFormat.format(Date())
         val formattedData = "$timestamp $data"
         val currentText = binding.textDataDisplay.text.toString()
+
         val newText = if (currentText == "Disconnected" || currentText == "Ready" ||
             currentText.startsWith("Connected") || currentText.startsWith("Waiting")) {
             formattedData
@@ -796,34 +827,40 @@ class SerialFragment : Fragment() {
         binding.textDataDisplay.text = newText
         dataCounter++
 
-        // Extract numeric value for graph - OPTIMIZED
-        try {
-            val parts = data.split(" ")
-            if (parts.isNotEmpty()) {
-                val value = parts[0].toFloatOrNull()
-                if (value != null && value > 0) {
-                    // Cache the value
-                    valueCache.add(value)
+        // Scroll to bottom of TextView
+        binding.textDataDisplay.post {
+            val scrollAmount = binding.textDataDisplay.layout?.getLineTop(binding.textDataDisplay.lineCount) ?: 0
+            if (scrollAmount > binding.textDataDisplay.height) {
+                binding.textDataDisplay.scrollTo(0, scrollAmount - binding.textDataDisplay.height)
+            }
+        }
 
-                    // Batch process cached values
-                    if (valueCache.size >= 3 || dataCounter % 3 == 0) {
-                        for (cachedValue in valueCache) {
-                            addDataToGraph(cachedValue)
+        // Extract numeric value for graph
+        try {
+            val firstSpace = data.indexOf(' ')
+            if (firstSpace > 0) {
+                val numberStr = data.substring(0, firstSpace)
+                val value = numberStr.toFloatOrNull()
+                if (value != null && value > 0) {
+                    valueCache[valueCacheSize] = value
+                    valueCacheSize++
+
+                    if (valueCacheSize >= BATCH_SIZE) {
+                        for (i in 0 until valueCacheSize) {
+                            addDataToGraph(valueCache[i])
                         }
-                        valueCache.clear()
+                        valueCacheSize = 0
                     }
                 }
             }
         } catch (e: Exception) {
-            // Not a numeric value, skip
+            // Skip non-numeric data
         }
 
-        // Save to DataManager
         saveSerialData(data)
         saveToFile(data)
 
         binding.textStats.text = "Packets: $dataCounter"
-        binding.scrollView.post { binding.scrollView.fullScroll(View.FOCUS_DOWN) }
     }
 
     private fun saveSerialData(data: String) {
@@ -836,9 +873,15 @@ class SerialFragment : Fragment() {
                 Capacitance = trueData.toInt(),
             )
 
+            // This will automatically add to plot data as well
             dataManager.saveRecord(record)
 
-            binding.textStats.text = "Packets: $dataCounter | Saved: ${dataManager.getRecordCount()}"
+            // Update statistics
+            binding.textStats.text = getString(
+                R.string.packets_saved_stat_text,
+                dataCounter,
+                dataManager.getRecordCount()
+            )
 
         } catch (e: Exception) {
             Log.e(TAG, "Error saving data", e)
@@ -847,6 +890,7 @@ class SerialFragment : Fragment() {
 
     private fun saveToFile(data: String) {
         try {
+            // Create the SerialData directory if it doesn't exist
             val baseDir = requireContext().getExternalFilesDir(null)
             val serialDataDir = File(baseDir, "SerialData")
 
@@ -871,7 +915,6 @@ class SerialFragment : Fragment() {
             Log.e(TAG, "Error saving to file", e)
         }
     }
-
     private fun enableSpinners(enabled: Boolean) {
         binding.spinnerBaudRate.isEnabled = enabled
         binding.spinnerDataBits.isEnabled = enabled
@@ -928,6 +971,7 @@ class SerialFragment : Fragment() {
 
     private val serialListener = object : SerialInputOutputManager.Listener {
         override fun onNewData(data: ByteArray) {
+            val text = String(data, Charsets.UTF_8)
             handler.post { processIncomingData(data) }
         }
         override fun onRunError(e: Exception?) {
@@ -944,8 +988,7 @@ class SerialFragment : Fragment() {
         super.onCreate(savedInstanceState)
         Log.d(TAG, "onCreate")
 
-        // Initialize DataManager
-        dataManager = DataManager(requireContext())
+
 
         // Get patient data from arguments
         arguments?.let {
@@ -983,11 +1026,15 @@ class SerialFragment : Fragment() {
             requireContext().registerReceiver(usbPermissionReceiver, filter)
             Log.d(TAG, "Receiver registered")
 
-            // Setup chart
-            setupChart()
+            // Enable scrolling for the data display TextView
+            binding.textDataDisplay.movementMethod = ScrollingMovementMethod.getInstance()
+            binding.textDataDisplay.isVerticalScrollBarEnabled = true
 
             // Display patient info
             displayPatientInfo()
+
+            // Setup chart
+            setupChart()
 
             setupSpinners()
             setupButtons()
