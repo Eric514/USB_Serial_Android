@@ -484,7 +484,7 @@ class SerialFragment : Fragment() {
 
             isConnected = true
             updateStatus("Connected at $selectedBaudRate baud")
-            binding.buttonConnect.text = getString(R.string.receiving_button_text)
+            startReceiving()
 
             // Disable configuration spinners when connected
             enableSpinners(false)
