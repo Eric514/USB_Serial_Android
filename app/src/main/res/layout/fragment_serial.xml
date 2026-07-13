@@ -381,14 +381,27 @@
                 android:orientation="vertical"
                 android:padding="10dp">
 
-                <TextView
-                    android:layout_width="wrap_content"
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/data_received"
-                    android:textStyle="bold"
-                    android:textSize="13sp"
-                    android:textColor="#333333"
-                    android:layout_marginBottom="6dp" />
+                    android:orientation="horizontal">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/data_received"
+                        android:textStyle="bold"
+                        android:textSize="13sp"
+                        android:textColor="#333333"
+                        android:layout_marginBottom="6dp" />
+
+                    <Button
+                        android:id="@+id/buttonToggleView"
+                        android:layout_width="match_parent"
+                        android:textSize="13sp"
+                        android:layout_marginStart="8dp"
+                        android:layout_height="36dp"
+                        android:text="Switch to Graph" />
+                </LinearLayout>
 
                 <!-- Using TextView with scrolling enabled instead of nested ScrollView -->
                 <ScrollView
@@ -411,6 +424,20 @@
                         android:inputType="textMultiLine" />
 
                 </ScrollView>
+
+                <FrameLayout
+                    android:id="@+id/graphContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="200dp"
+                    android:layout_marginTop="8dp"
+                    android:visibility="gone"
+                    android:background="#FFFFFF">
+
+                    <com.github.mikephil.charting.charts.LineChart
+                        android:id="@+id/lineChart"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent" />
+                </FrameLayout>
 
             </LinearLayout>
         </androidx.cardview.widget.CardView>
