@@ -85,16 +85,6 @@
         android:orientation="horizontal">
 
         <Button
-            android:id="@+id/buttonRealTime"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="4dp"
-            android:layout_weight="1.5"
-            android:backgroundTint="#4CAF50"
-            android:text="▶ Start Real-time"
-            android:textColor="#FFFFFF" />
-
-        <Button
             android:id="@+id/buttonLoadFile"
             android:layout_width="0dp"
             android:layout_height="wrap_content"

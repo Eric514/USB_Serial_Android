@@ -110,14 +110,14 @@
 
                     <Button
                         android:id="@+id/buttonRefresh"
-                        android:layout_width="32dp"
+                        android:layout_width="48dp"
                         android:layout_height="32dp"
-                        android:text="@string/button_refresh"
-                        android:textSize="14sp"
-                        android:layout_marginStart="6dp"
-                        android:padding="0dp"
+                        android:layout_marginStart="4dp"
                         android:backgroundTint="#2196F3"
-                        android:textColor="#FFFFFF" />
+                        android:padding="0dp"
+                        android:text="@string/button_refresh"
+                        android:textColor="#FFFFFF"
+                        android:textSize="14sp" />
                 </LinearLayout>
 
                 <!-- Baud Rate -->

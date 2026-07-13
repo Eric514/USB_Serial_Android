@@ -167,7 +167,7 @@ class PlotFragment : Fragment() {
             }
 
             // Remove real-time button - hide it
-            binding.buttonRealTime.visibility = View.GONE
+//            binding.buttonRealTime.visibility = View.GONE
 
             // Load File button shows app's files
             binding.buttonLoadFile.setOnClickListener {
