@@ -8,7 +8,7 @@
     <string name="title_serial_settings">⚙️ Serial Port Settings</string>
     <string name="label_device">Device:</string>
     <string name="button_refresh">⟳</string>
-    <string name="label_baud">Baud:</string>
+    <string name="label_baud">Baudrate:</string>
     <string name="label_data">Data:</string>
     <string name="label_stop">Stop:</string>
     <string name="label_parity">Parity:</string>

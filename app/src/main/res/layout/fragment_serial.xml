@@ -100,18 +100,19 @@
                         android:layout_marginBottom="6dp">
 
                         <TextView
-                            android:layout_width="48dp"
+                            android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
+                            android:paddingTop="6dp"
                             android:text="@string/label_device"
                             android:textSize="13sp"
-                            android:textStyle="bold"
-                            android:paddingTop="6dp" />
+                            android:textStyle="bold" />
 
                         <Spinner
                             android:id="@+id/spinnerDevice"
                             android:layout_width="0dp"
                             android:layout_height="32dp"
                             android:layout_weight="1"
+                            android:layout_marginStart="8dp"
                             android:background="@android:drawable/editbox_background"
                             android:popupBackground="@android:color/white" />
 
@@ -135,7 +136,7 @@
                         android:layout_marginBottom="6dp">
 
                         <TextView
-                            android:layout_width="48dp"
+                            android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="@string/label_baud"
                             android:textSize="13sp"
@@ -147,6 +148,7 @@
                             android:layout_width="0dp"
                             android:layout_height="32dp"
                             android:layout_weight="1"
+                            android:layout_marginStart="8dp"
                             android:background="@android:drawable/editbox_background"
                             android:popupBackground="@android:color/white" />
                     </LinearLayout>
@@ -163,11 +165,10 @@
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
-                            android:orientation="horizontal"
-                            android:layout_marginEnd="3dp">
+                            android:orientation="horizontal">
 
                             <TextView
-                                android:layout_width="28dp"
+                                android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="@string/label_data"
                                 android:textSize="11sp"
@@ -176,9 +177,8 @@
 
                             <Spinner
                                 android:id="@+id/spinnerDataBits"
-                                android:layout_width="0dp"
+                                android:layout_width="wrap_content"
                                 android:layout_height="32dp"
-                                android:layout_weight="1"
                                 android:background="@android:drawable/editbox_background"
                                 android:popupBackground="@android:color/white" />
                         </LinearLayout>
@@ -187,12 +187,10 @@
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
-                            android:orientation="horizontal"
-                            android:layout_marginStart="3dp"
-                            android:layout_marginEnd="3dp">
+                            android:orientation="horizontal">
 
                             <TextView
-                                android:layout_width="28dp"
+                                android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="@string/label_stop"
                                 android:textSize="11sp"
@@ -201,9 +199,8 @@
 
                             <Spinner
                                 android:id="@+id/spinnerStopBits"
-                                android:layout_width="0dp"
+                                android:layout_width="wrap_content"
                                 android:layout_height="32dp"
-                                android:layout_weight="1"
                                 android:background="@android:drawable/editbox_background"
                                 android:popupBackground="@android:color/white" />
                         </LinearLayout>
@@ -211,12 +208,11 @@
                         <LinearLayout
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:orientation="horizontal"
-                            android:layout_marginStart="3dp">
+                            android:layout_weight="1.5"
+                            android:orientation="horizontal">
 
                             <TextView
-                                android:layout_width="32dp"
+                                android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="@string/label_parity"
                                 android:textSize="11sp"
@@ -225,9 +221,8 @@
 
                             <Spinner
                                 android:id="@+id/spinnerParity"
-                                android:layout_width="0dp"
+                                android:layout_width="wrap_content"
                                 android:layout_height="32dp"
-                                android:layout_weight="1"
                                 android:background="@android:drawable/editbox_background"
                                 android:popupBackground="@android:color/white" />
                         </LinearLayout>
