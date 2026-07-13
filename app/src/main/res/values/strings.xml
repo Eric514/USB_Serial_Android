@@ -12,7 +12,7 @@
     <string name="label_data">Data:</string>
     <string name="label_stop">Stop:</string>
     <string name="label_parity">Parity:</string>
-    <string name="button_disconnect">Reset Device</string>
+    <string name="button_disconnect">Reset</string>
     <string name="button_start">Start Recording</string>
     <string name="button_stop">Stop</string>
     <string name="button_stop_receiving">Stop Receiving</string>
