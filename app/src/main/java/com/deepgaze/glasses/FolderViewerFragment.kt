@@ -132,10 +132,6 @@ class FolderViewerFragment : Fragment() {
             showChangeFolderDialog()
         }
 
-        buttonOpenFolder.setOnClickListener {
-            openFolder()
-        }
-
         buttonClearAll.setOnClickListener {
             clearAllFiles()
         }
