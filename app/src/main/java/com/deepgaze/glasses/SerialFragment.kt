@@ -957,7 +957,7 @@ class SerialFragment : Fragment() {
                 Log.d(TAG, "Created SerialData directory: ${serialDataDir.absolutePath}")
             }
 
-            val fileName = "serial_data_${patientId}_${SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())}.csv"
+            val fileName = "${patientId}_${patientName}_${SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())}.csv"
             val file = File(serialDataDir, fileName)
             val trueData = data.split(" ")[0]
 
