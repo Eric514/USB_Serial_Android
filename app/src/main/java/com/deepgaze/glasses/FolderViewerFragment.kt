@@ -235,59 +235,6 @@ class FolderViewerFragment : Fragment() {
             .show()
     }
 
-    private fun openFolder() {
-        try {
-            val dir = storageManager.getStorageDirectory()
-
-            // Create a file intent to open the folder
-            val intent = Intent(Intent.ACTION_VIEW)
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                // For Android 7+, use FileProvider or just show the path
-                Toast.makeText(
-                    requireContext(),
-                    "Folder: ${dir.absolutePath}",
-                    Toast.LENGTH_LONG
-                ).show()
-
-                // Try to open with a file manager
-                val uri = Uri.fromFile(dir)
-                intent.setDataAndType(uri, "resource/folder")
-
-                // Check if any app can handle this intent
-                if (intent.resolveActivity(requireContext().packageManager) != null) {
-                    startActivity(Intent.createChooser(intent, "Open Folder"))
-                } else {
-                    // Fallback: show path in a dialog
-                    showFolderPathDialog(dir.absolutePath)
-                }
-            } else {
-                // For older Android versions
-                val uri = Uri.fromFile(dir)
-                intent.setDataAndType(uri, "resource/folder")
-                if (intent.resolveActivity(requireContext().packageManager) != null) {
-                    startActivity(Intent.createChooser(intent, "Open Folder"))
-                } else {
-                    showFolderPathDialog(dir.absolutePath)
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error opening folder", e)
-            showFolderPathDialog(storageManager.getStorageDirectory().absolutePath)
-        }
-    }
-
-    private fun showFolderPathDialog(path: String) {
-        AlertDialog.Builder(requireContext())
-            .setTitle("Storage Folder")
-            .setMessage("Files are stored at:\n\n$path\n\nYou can find them using a file manager app.")
-            .setPositiveButton("Copy Path") { _, _ ->
-                copyToClipboard(path)
-            }
-            .setNegativeButton("Close", null)
-            .show()
-    }
-
     private fun copyToClipboard(text: String) {
         try {
             val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
