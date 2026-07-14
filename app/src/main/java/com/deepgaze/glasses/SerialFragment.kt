@@ -37,9 +37,9 @@ import android.graphics.Color
 import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.data.LineData
-import androidx.core.widget.NestedScrollView
 import android.text.method.ScrollingMovementMethod
 import androidx.core.graphics.toColorInt
+
 
 class SerialFragment : Fragment() {
     private var _binding: FragmentSerialBinding? = null
@@ -60,19 +60,17 @@ class SerialFragment : Fragment() {
     private val dateFormat = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault())
 
     private val dataBuffer = StringBuilder()
-    private val messageQueue = mutableListOf<String>()
     private var isProcessingQueue = false
     private var lastDataTime = 0L
-    private val TIMEOUT_MS = 100L // Time to wait for complete message
-    private val MIN_MESSAGE_LENGTH = 2 // Minimum characters for a valid message
-    private val MAX_BUFFER_SIZE = 1024 * 1024 // 1MB max buffer size
+    private val TIMEOUT_MS = 100L
+    private val MIN_MESSAGE_LENGTH = 2
+    private val MAX_BUFFER_SIZE = 1024 * 1024
 
-    // Message delimiters - customize based on your device
+    // Message delimiters
     private val MESSAGE_DELIMITERS = listOf("\n", "\r\n", "\r", ";", "\t")
     private var customDelimiter: String? = null
 
     // Connect Button Color
-
     var colorInt = "#4CAF50".toColorInt()
 
     // Patient data
@@ -94,29 +92,24 @@ class SerialFragment : Fragment() {
     private val TAG = "SerialFragment"
 
     // ==================== OPTIMIZED GRAPH VARIABLES ====================
-    // Use FloatArray for better performance
     private val graphValues = FloatArray(100)
     private var graphValueCount = 0
     private var graphIndex = 0
     private val MAX_GRAPH_POINTS = 50
 
-    // Chart components
     private lateinit var lineChart: LineChart
     private lateinit var lineDataSet: LineDataSet
 
-    // Graph state
     private var showGraph = false
     private var isGraphUpdating = false
     private var isChartInitialized = false
     private var pendingGraphUpdate = false
     private var graphUpdateCounter = 0
 
-    // Cache for numeric values
     private val valueCache = FloatArray(5)
     private var valueCacheSize = 0
     private val BATCH_SIZE = 3
 
-    // Graph update interval
     private var lastGraphUpdateTime = 0L
     private val GRAPH_UPDATE_INTERVAL_MS = 200L
 
@@ -125,7 +118,23 @@ class SerialFragment : Fragment() {
     private var isSavingEnabled = true
     private var currentDataBuffer = StringBuilder()
     private var lastSaveTime = 0L
-    private val SAVE_INTERVAL_MS = 5000L // Save at most every 5 seconds
+    private val SAVE_INTERVAL_MS = 5000L
+
+    // ==================== PERFORMANCE OPTIMIZATIONS FOR SAMSUNG ====================
+    // Batch UI updates to prevent UI thread congestion
+    private val pendingDataBatch = mutableListOf<String>()
+    private var isBatchUpdateScheduled = false
+    private val BATCH_UPDATE_DELAY_MS = 50L
+    private val MAX_BATCH_SIZE = 10
+
+    // Track last scroll to prevent excessive scrolling
+    private var lastScrollTime = 0L
+    private val SCROLL_DEBOUNCE_MS = 100L
+
+    // StringBuilder for display to reduce object creation
+    private val displayBuilder = StringBuilder()
+    private var displayLines = mutableListOf<String>()
+    private val MAX_DISPLAY_LINES = 200
 
     // ==================== DECLARE ALL FUNCTIONS FIRST ====================
 
@@ -134,23 +143,18 @@ class SerialFragment : Fragment() {
             val text = String(data, Charsets.UTF_8)
             Log.d(TAG, "Raw data received: $text")
 
-            // Append to buffer
             dataBuffer.append(text)
 
-            // Check buffer size - prevent memory issues
             if (dataBuffer.length > MAX_BUFFER_SIZE) {
                 Log.w(TAG, "Buffer size exceeded, clearing")
                 dataBuffer.clear()
                 return
             }
 
-            // Try to extract complete messages
             extractMessages()
 
-            // If we have data in buffer and no newline yet, wait for more data
             if (dataBuffer.isNotEmpty()) {
                 Log.d(TAG, "Buffer has ${dataBuffer.length} chars waiting for complete message")
-                // Schedule a timeout to process incomplete data
                 scheduleBufferTimeout()
             }
 
@@ -162,25 +166,17 @@ class SerialFragment : Fragment() {
     private fun extractMessages() {
         if (dataBuffer.isEmpty()) return
 
-        var processed = 0
-
-        // Try each delimiter
         for (delimiter in MESSAGE_DELIMITERS) {
             var index: Int
 
             while (dataBuffer.indexOf(delimiter).also { index = it } != -1) {
-                // Extract message including delimiter
                 val endPos = index + delimiter.length
                 val message = dataBuffer.substring(0, endPos).trim()
-
-                // Remove from buffer
                 dataBuffer.delete(0, endPos)
 
-                // Process if it's a valid message
                 if (message.isNotEmpty() && message.length >= MIN_MESSAGE_LENGTH) {
                     Log.d(TAG, "Complete message extracted: $message")
                     handleCompleteMessage(message)
-                    processed++
                 } else if (message.isNotEmpty()) {
                     Log.d(TAG, "Message too short, ignoring: $message")
                 }
@@ -188,34 +184,21 @@ class SerialFragment : Fragment() {
         }
     }
 
-    /**
-     * Handle a complete message
-     */
     private fun handleCompleteMessage(message: String) {
-        // Clean the message - remove extra whitespace
         val cleanMessage = message.trim()
 
-        // Add to display
-        displayData(cleanMessage)
+        // Use batched display for better performance on Samsung
+        addDataToBatch(cleanMessage)
 
-        // Save to storage
         saveSerialData(cleanMessage)
-
-        // Update counter
         dataCounter++
     }
 
-    /**
-     * Schedule a timeout to process any pending buffer data
-     */
     private fun scheduleBufferTimeout() {
         handler.removeCallbacks(bufferTimeoutRunnable)
         handler.postDelayed(bufferTimeoutRunnable, TIMEOUT_MS)
     }
 
-    /**
-     * Runnable to handle buffer timeout
-     */
     private val bufferTimeoutRunnable = Runnable {
         if (dataBuffer.isNotEmpty()) {
             Log.d(TAG, "Buffer timeout - processing remaining data: ${dataBuffer.length} chars")
@@ -223,7 +206,6 @@ class SerialFragment : Fragment() {
             dataBuffer.clear()
 
             if (remainingData.isNotEmpty() && remainingData.length >= MIN_MESSAGE_LENGTH) {
-                // If there's a custom delimiter, try to split
                 if (customDelimiter != null) {
                     val parts = remainingData.split(customDelimiter!!)
                     parts.forEach { part ->
@@ -241,7 +223,7 @@ class SerialFragment : Fragment() {
     private fun updateStatus(text: String) {
         handler.post {
             try {
-                binding.textStatus.text = getString(R.string.status_text, text)
+                binding.textStatus.text = "Status: $text"
             } catch (e: Exception) {
                 Log.e(TAG, "updateStatus error", e)
             }
@@ -376,6 +358,7 @@ class SerialFragment : Fragment() {
                 navigateToPlot()
             }
             binding.buttonStorageManager.setOnClickListener {
+                disconnect()
                 findNavController().navigate(R.id.action_serialFragment_to_folderViewerFragment)
             }
             Log.d(TAG, "Buttons setup done")
@@ -491,7 +474,6 @@ class SerialFragment : Fragment() {
             updateStatus("Connected at $selectedBaudRate baud")
             startReceiving()
 
-            // Disable configuration spinners when connected
             enableSpinners(false)
 
             val configInfo = """
@@ -505,10 +487,13 @@ class SerialFragment : Fragment() {
                 ⏳ Waiting for data...
             """.trimIndent()
 
-            // Display patient info with connection
             val patientInfo = getPatientDataSummary()
-            binding.textDataDisplay.text =
-                getString(R.string.on_connect_info_display, patientInfo, configInfo)
+
+            // Clear display and set initial text
+            displayLines.clear()
+            displayLines.add(patientInfo)
+            displayLines.add(configInfo)
+            updateDisplayText()
 
             Toast.makeText(requireContext(), "✅ Connected to USB device", Toast.LENGTH_SHORT).show()
             Log.d(TAG, "Device opened successfully")
@@ -537,7 +522,7 @@ class SerialFragment : Fragment() {
             isReceiving = true
             colorInt = "#8b0000".toColorInt()
             binding.buttonConnect.backgroundTintList = ColorStateList.valueOf(colorInt)
-            binding.buttonConnect.text = getString(R.string.stop_receiving_button_text)
+            binding.buttonConnect.text = "Stop Receiving"
             updateStatus("Receiving data...")
             Log.d(TAG, "Receiving started")
 
@@ -557,7 +542,7 @@ class SerialFragment : Fragment() {
         executor = null
         colorInt = "#4CAF50".toColorInt()
         binding.buttonConnect.backgroundTintList = ColorStateList.valueOf(colorInt)
-        binding.buttonConnect.text = getString(R.string.receiving_button_text)
+        binding.buttonConnect.text = "Start Receiving"
         updateStatus("Stopped receiving")
     }
 
@@ -570,9 +555,18 @@ class SerialFragment : Fragment() {
         } catch (_: Exception) {}
         serialPort = null
         isConnected = false
-        binding.textDataDisplay.text = getString(R.string.disconnected_text)
+
+        // Clear display
+        displayLines.clear()
+        displayLines.add("Disconnected")
+        updateDisplayText()
+
         updateStatus("Disconnected")
         enableSpinners(true)
+
+        // Clear pending batch
+        pendingDataBatch.clear()
+        isBatchUpdateScheduled = false
     }
 
     private fun updateSerialParameters() {
@@ -586,14 +580,14 @@ class SerialFragment : Fragment() {
             updateStatus("Parameters updated: $selectedBaudRate baud")
 
             val timestamp = dateFormat.format(Date())
-            val currentText = binding.textDataDisplay.text.toString()
-            binding.textDataDisplay.text = """
-                $currentText
-                ──────────────────────────────
-                ⚙️ [$timestamp] Parameters updated:
-                Baud: $selectedBaudRate, Data: $selectedDataBits,
-                Stop: ${getStopBitsText(selectedStopBits)}, Parity: ${getParityText(selectedParity)}
-            """.trimIndent()
+            val paramMsg = "⚙️ [$timestamp] Parameters updated: Baud: $selectedBaudRate, Data: $selectedDataBits, Stop: ${getStopBitsText(selectedStopBits)}, Parity: ${getParityText(selectedParity)}"
+
+            // Add to display
+            displayLines.add(paramMsg)
+            if (displayLines.size > MAX_DISPLAY_LINES) {
+                displayLines.removeAt(0)
+            }
+            updateDisplayText()
 
             Toast.makeText(requireContext(), "Parameters updated", Toast.LENGTH_SHORT).show()
             Log.d(TAG, "Parameters updated: $selectedBaudRate baud, $selectedDataBits data bits")
@@ -666,12 +660,10 @@ class SerialFragment : Fragment() {
                     textSize = 10f
                 }
 
-                // Performance optimization
                 setViewPortOffsets(10f, 10f, 10f, 10f)
                 setExtraOffsets(5f, 5f, 5f, 5f)
             }
 
-            // Create dataset
             lineDataSet = LineDataSet(emptyList(), "Capacitance (pF)").apply {
                 color = Color.BLUE
                 setCircleColor(Color.BLUE)
@@ -706,7 +698,6 @@ class SerialFragment : Fragment() {
             showGraph = !showGraph
 
             if (showGraph) {
-                // Show graph, hide text display
                 binding.textDataDisplay.visibility = View.GONE
                 binding.graphContainer.visibility = View.VISIBLE
                 binding.buttonToggleView.text = "Switch to Data"
@@ -720,7 +711,6 @@ class SerialFragment : Fragment() {
                 }, 50)
 
             } else {
-                // Show text display, hide graph
                 binding.graphContainer.visibility = View.GONE
                 binding.textDataDisplay.visibility = View.VISIBLE
                 binding.buttonToggleView.text = "Switch to Graph"
@@ -748,7 +738,6 @@ class SerialFragment : Fragment() {
         try {
             isGraphUpdating = true
 
-            // Build entries from primitive array
             val entries = mutableListOf<Entry>()
             val start = if (graphValueCount > MAX_GRAPH_POINTS) {
                 graphValueCount - MAX_GRAPH_POINTS
@@ -819,30 +808,106 @@ class SerialFragment : Fragment() {
         }
     }
 
-    private fun displayData(data: String) {
+    // ==================== OPTIMIZED DISPLAY FUNCTIONS FOR SAMSUNG ====================
+
+    private fun addDataToBatch(data: String) {
         val timestamp = dateFormat.format(Date())
         val formattedData = "$timestamp $data"
-        val currentText = binding.textDataDisplay.text.toString()
 
-        val newText = if (currentText == "Disconnected" || currentText == "Ready" ||
-            currentText.startsWith("Connected") || currentText.startsWith("Waiting")) {
-            formattedData
-        } else {
-            val lines = currentText.split("\n")
-            val limited = if (lines.size >= 200) lines.drop(lines.size - 199) else lines
-            limited.joinToString("\n") + "\n$formattedData"
+        pendingDataBatch.add(formattedData)
+
+        // Process numeric data for graph immediately (off UI thread)
+        processNumericDataForGraph(data)
+
+        // Save data immediately (off UI thread)
+        saveSerialData(data)
+        saveToFile(data)
+
+        // Update counter
+        dataCounter++
+
+        // Schedule batch update
+        if (!isBatchUpdateScheduled) {
+            isBatchUpdateScheduled = true
+            handler.postDelayed({
+                flushDataBatch()
+            }, BATCH_UPDATE_DELAY_MS)
         }
-        binding.textDataDisplay.text = newText
 
-        // Scroll to bottom of TextView
-        binding.textDataDisplay.post {
-            val scrollAmount = binding.textDataDisplay.layout?.getLineTop(binding.textDataDisplay.lineCount) ?: 0
-            if (scrollAmount > binding.textDataDisplay.height) {
-                binding.textDataDisplay.scrollTo(0, scrollAmount - binding.textDataDisplay.height)
+        // If batch gets too large, flush immediately
+        if (pendingDataBatch.size >= MAX_BATCH_SIZE) {
+            handler.removeCallbacksAndMessages(null)
+            flushDataBatch()
+        }
+    }
+
+    private fun flushDataBatch() {
+        if (pendingDataBatch.isEmpty()) return
+
+        isBatchUpdateScheduled = false
+        val batch = pendingDataBatch.toList()
+        pendingDataBatch.clear()
+
+        // Update UI with batch
+        handler.post {
+            try {
+                // Add all items to display
+                for (item in batch) {
+                    displayLines.add(item)
+                    if (displayLines.size > MAX_DISPLAY_LINES) {
+                        displayLines.removeAt(0)
+                    }
+                }
+
+                // Update text view
+                updateDisplayText()
+
+                // Update statistics
+                binding.textStats.text = "Packets: $dataCounter"
+
+                // Smart scroll with debouncing
+                scrollToBottomIfNeeded()
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error flushing data batch", e)
             }
         }
+    }
 
-        // Extract numeric value for graph
+    private fun updateDisplayText() {
+        try {
+            displayBuilder.clear()
+            for (line in displayLines) {
+                displayBuilder.append(line).append("\n")
+            }
+            binding.textDataDisplay.text = displayBuilder.toString()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating display text", e)
+        }
+    }
+
+    private fun scrollToBottomIfNeeded() {
+        val now = System.currentTimeMillis()
+        if (now - lastScrollTime < SCROLL_DEBOUNCE_MS) return
+        lastScrollTime = now
+
+        binding.textDataDisplay.post {
+            try {
+                val lineCount = binding.textDataDisplay.lineCount
+                if (lineCount > 0) {
+                    val scrollAmount = binding.textDataDisplay.layout?.getLineTop(lineCount - 1) ?: 0
+                    val height = binding.textDataDisplay.height
+                    if (scrollAmount > height) {
+                        binding.textDataDisplay.scrollTo(0, scrollAmount - height)
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore scroll errors
+            }
+        }
+    }
+
+    private fun processNumericDataForGraph(data: String) {
         try {
             val firstSpace = data.indexOf(' ')
             if (firstSpace > 0) {
@@ -863,11 +928,6 @@ class SerialFragment : Fragment() {
         } catch (e: Exception) {
             // Skip non-numeric data
         }
-
-        saveSerialData(data)
-        saveToFile(data)
-
-        binding.textStats.text = "Packets: $dataCounter"
     }
 
     private fun saveSerialData(data: String) {
@@ -880,7 +940,6 @@ class SerialFragment : Fragment() {
                 Capacitance = trueData.toInt(),
             )
 
-            // This will automatically add to plot data as well
             dataManager.saveRecord(record)
 
         } catch (e: Exception) {
@@ -890,7 +949,6 @@ class SerialFragment : Fragment() {
 
     private fun saveToFile(data: String) {
         try {
-            // Create the SerialData directory if it doesn't exist
             val baseDir = requireContext().getExternalFilesDir(null)
             val serialDataDir = File(baseDir, "SerialData")
 
@@ -915,6 +973,7 @@ class SerialFragment : Fragment() {
             Log.e(TAG, "Error saving to file", e)
         }
     }
+
     private fun enableSpinners(enabled: Boolean) {
         binding.spinnerBaudRate.isEnabled = enabled
         binding.spinnerDataBits.isEnabled = enabled
@@ -944,7 +1003,7 @@ class SerialFragment : Fragment() {
         }
     }
 
-    // ==================== NOW DEFINE THE RECEIVERS ====================
+    // ==================== RECEIVERS ====================
 
     private val usbPermissionReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -971,7 +1030,6 @@ class SerialFragment : Fragment() {
 
     private val serialListener = object : SerialInputOutputManager.Listener {
         override fun onNewData(data: ByteArray) {
-            val text = String(data, Charsets.UTF_8)
             handler.post { processIncomingData(data) }
         }
         override fun onRunError(e: Exception?) {
@@ -988,7 +1046,8 @@ class SerialFragment : Fragment() {
         super.onCreate(savedInstanceState)
         Log.d(TAG, "onCreate")
 
-        // Get patient data from arguments
+//        dataManager = DataManager(requireContext())
+
         arguments?.let {
             patientId = it.getString("patientId", "")
             patientName = it.getString("patientName", "")
@@ -1025,16 +1084,11 @@ class SerialFragment : Fragment() {
             requireContext().registerReceiver(usbPermissionReceiver, filter)
             Log.d(TAG, "Receiver registered")
 
-            // Enable scrolling for the data display TextView
             binding.textDataDisplay.movementMethod = ScrollingMovementMethod.getInstance()
             binding.textDataDisplay.isVerticalScrollBarEnabled = true
 
-            // Display patient info
             displayPatientInfo()
-
-            // Setup chart
             setupChart()
-
             setupSpinners()
             setupButtons()
             refreshDeviceList()
@@ -1049,8 +1103,8 @@ class SerialFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
-        Log.d(TAG, "onDestroyView")
         disconnect()
+        Log.d(TAG, "onDestroyView")
         try {
             requireContext().unregisterReceiver(usbPermissionReceiver)
         } catch (_: Exception) {}
