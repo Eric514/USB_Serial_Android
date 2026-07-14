@@ -95,7 +95,7 @@ class SerialFragment : Fragment() {
     private val graphValues = FloatArray(100)
     private var graphValueCount = 0
     private var graphIndex = 0
-    private val MAX_GRAPH_POINTS = 50
+    private val MAX_GRAPH_POINTS = 100
 
     private lateinit var lineChart: LineChart
     private lateinit var lineDataSet: LineDataSet

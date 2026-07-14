@@ -33,7 +33,7 @@ class PlotFragment : Fragment() {
 
     private lateinit var lineChart: LineChart
     private var allDataPoints = mutableListOf<DataManager.CapacitanceDataPoint>()
-    private val DISPLAY_POINTS = 200 // Number of points to display at once
+    private val DISPLAY_POINTS = 1000 // Number of points to display at once
     private val TAG = "PlotFragment"
     private var dataManager: DataManager? = null
     private var patientId = ""
