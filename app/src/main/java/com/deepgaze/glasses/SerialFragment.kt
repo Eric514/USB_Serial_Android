@@ -41,7 +41,6 @@ import androidx.core.widget.NestedScrollView
 import android.text.method.ScrollingMovementMethod
 import androidx.core.graphics.toColorInt
 
-
 class SerialFragment : Fragment() {
     private var _binding: FragmentSerialBinding? = null
     private val binding get() = _binding!!
