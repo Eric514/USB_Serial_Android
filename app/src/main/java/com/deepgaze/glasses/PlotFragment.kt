@@ -1,5 +1,6 @@
 package com.deepgaze.glasses
 
+import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
@@ -15,6 +16,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.core.content.FileProvider
 import androidx.documentfile.provider.DocumentFile
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import com.deepgaze.glasses.databinding.FragmentPlotBinding
 import com.github.mikephil.charting.charts.LineChart
@@ -23,6 +25,9 @@ import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.data.LineData
 import com.github.mikephil.charting.data.LineDataSet
 import com.github.mikephil.charting.formatter.ValueFormatter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -33,17 +38,23 @@ class PlotFragment : Fragment() {
 
     private lateinit var lineChart: LineChart
     private var allDataPoints = mutableListOf<DataManager.CapacitanceDataPoint>()
-    private val DISPLAY_POINTS = 1000 // Number of points to display at once
+    private val DISPLAY_POINTS = 200
     private val TAG = "PlotFragment"
     private var dataManager: DataManager? = null
     private var patientId = ""
     private var patientName = ""
     private var currentFilePath: String = ""
 
+    // Blink detection variables
+    private var currentData: DoubleArray = doubleArrayOf()
+    private var currentTimestamps: DoubleArray = doubleArrayOf()
+    private var currentSpikeIndices: List<Int> = emptyList()
+    private var currentFilteredData: DoubleArray = doubleArrayOf()
+    private var isDetectingBlink = false
+
     // Viewport tracking for scrolling
     private var currentStartIndex = 0
     private var currentEndIndex = 0
-    private var totalDataPoints = 0
 
     // Custom value formatter for x-axis
     private val xAxisFormatter = object : ValueFormatter() {
@@ -133,7 +144,6 @@ class PlotFragment : Fragment() {
                 setDrawGridBackground(false)
                 setDrawBorders(false)
 
-                // Enable scrolling
                 setVisibleXRangeMaximum(DISPLAY_POINTS.toFloat())
                 setVisibleXRangeMinimum(10f)
 
@@ -168,10 +178,7 @@ class PlotFragment : Fragment() {
                     textSize = 10f
                 }
 
-                // Disable highlight for better performance
                 setMaxHighlightDistance(0f)
-
-                // Set viewport offsets
                 setViewPortOffsets(10f, 10f, 10f, 10f)
                 setExtraOffsets(5f, 5f, 5f, 5f)
             }
@@ -209,7 +216,6 @@ class PlotFragment : Fragment() {
 
             binding.buttonZoomReset.setOnClickListener {
                 try {
-                    // Reset to show the first 200 points or all if less
                     if (allDataPoints.size > DISPLAY_POINTS) {
                         currentStartIndex = 0
                         currentEndIndex = DISPLAY_POINTS
@@ -225,7 +231,12 @@ class PlotFragment : Fragment() {
                 }
             }
 
-            // Navigation buttons for scrolling through data
+            // Blink Detection Button
+            binding.buttonDetectBlink.setOnClickListener {
+                detectBlink()
+            }
+
+            // Navigation buttons
             binding.buttonScrollLeft.setOnClickListener {
                 scrollData(-DISPLAY_POINTS)
             }
@@ -234,7 +245,6 @@ class PlotFragment : Fragment() {
                 scrollData(DISPLAY_POINTS)
             }
 
-            // Initially hide scroll buttons if not needed
             binding.buttonScrollLeft.visibility = View.GONE
             binding.buttonScrollRight.visibility = View.GONE
 
@@ -243,16 +253,445 @@ class PlotFragment : Fragment() {
         }
     }
 
-    /**
-     * Scroll the data view by the specified amount
-     */
+    // ==================== BLINK DETECTION FUNCTIONS ====================
+
+    private fun detectBlink() {
+        if (allDataPoints.isEmpty()) {
+            Toast.makeText(requireContext(), "No data to analyze", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (isDetectingBlink) {
+            Toast.makeText(requireContext(), "Blink detection already in progress", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // Prepare data for detection
+        prepareDataForDetection()
+
+        if (currentData.isEmpty()) {
+            Toast.makeText(requireContext(), "No valid data for detection", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        lifecycleScope.launch {
+            isDetectingBlink = true
+            binding.buttonDetectBlink.isEnabled = false
+            binding.buttonDetectBlink.text = "Detecting..."
+
+            Toast.makeText(requireContext(), "Detecting blinks...", Toast.LENGTH_SHORT).show()
+
+            try {
+                val (filteredData, spikeIndices) = withContext(Dispatchers.IO) {
+                    try {
+                        // Apply Savitzky-Golay filter (simple moving average)
+                        val filtered = savitzkyGolayFilter(currentData, 41, 4)
+
+                        // Detect positive spikes
+                        val peaks = detectPositivePeaks(filtered)
+
+                        Log.d(TAG, "Blink detection results: ${peaks.size} peaks found")
+                        println("=".repeat(50))
+                        println("BLINK DETECTION RESULTS:")
+                        println("Blinks detected: ${peaks.size}")
+                        if (peaks.isNotEmpty()) {
+                            println("Peak indices: ${peaks.take(20)}")
+                            // Calculate blink rate
+                            if (peaks.size > 1) {
+                                val averageInterval = (peaks.last() - peaks.first()).toDouble() / (peaks.size - 1)
+                                println("Average interval between blinks: $averageInterval samples")
+                            }
+                        }
+                        println("=".repeat(50))
+
+                        Pair(filtered, peaks)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        Pair(currentData, emptyList<Int>())
+                    }
+                }
+
+                currentFilteredData = filteredData
+                currentSpikeIndices = spikeIndices
+
+                // Update chart with blink detection results
+                withContext(Dispatchers.Main) {
+                    // Create a new list with blink markers
+                    updateChartWithBlinkDetection()
+
+                    // Show blink count
+                    val message = if (spikeIndices.isNotEmpty()) {
+                        "Found ${spikeIndices.size} blinks!"
+                    } else {
+                        "No blinks detected. Try adjusting parameters."
+                    }
+                    Toast.makeText(requireContext(), message, Toast.LENGTH_LONG).show()
+
+                    // Update info text
+                    val blinkInfo = "Blinks detected: ${spikeIndices.size}"
+
+                    // Show blink detection options after detection
+                    showBlinkDetectionOptions(spikeIndices)
+                }
+
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(requireContext(), "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                    e.printStackTrace()
+                }
+            } finally {
+                withContext(Dispatchers.Main) {
+                    isDetectingBlink = false
+                    binding.buttonDetectBlink.isEnabled = true
+                    binding.buttonDetectBlink.text = "Detect Blinks"
+                }
+            }
+        }
+    }
+
+    private fun prepareDataForDetection() {
+        try {
+            val values = allDataPoints.map { it.capacitance.toDouble() }.toDoubleArray()
+            val timestamps = allDataPoints.map { it.timestamp.toDouble() }.toDoubleArray()
+
+            currentData = values
+            currentTimestamps = timestamps
+
+            Log.d(TAG, "Prepared ${currentData.size} data points for detection")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error preparing data", e)
+        }
+    }
+
+    private fun detectPositivePeaks(data: DoubleArray): List<Int> {
+        if (data.size < 3) return emptyList()
+
+        val mean = data.average()
+        val std = data.std()
+
+        // Try different thresholds to find optimal detection
+        val multipliers = listOf(1.5, 2.0, 2.5, 3.0, 3.5)
+        var bestPeaks = emptyList<Int>()
+        var bestScore = 0
+
+        for (multiplier in multipliers) {
+            val threshold = mean + (multiplier * std)
+            val peaks = findPeaks(data, threshold)
+
+            // Score peaks: prefer finding between 3 and 30 peaks with good spacing
+            if (peaks.isNotEmpty() && peaks.size in 3..30 && peaks.size > bestScore) {
+                bestPeaks = peaks
+                bestScore = peaks.size
+
+                Log.d(TAG, "Threshold multiplier $multiplier found ${peaks.size} peaks")
+            }
+        }
+
+        // If no peaks found with standard thresholds, try lower threshold
+        if (bestPeaks.isEmpty()) {
+            val threshold = mean + (0.5 * std)
+            bestPeaks = findPeaks(data, threshold)
+            Log.d(TAG, "Using low threshold, found ${bestPeaks.size} peaks")
+        }
+
+        return bestPeaks
+    }
+
+    private fun findPeaks(data: DoubleArray, threshold: Double): List<Int> {
+        val peaks = mutableListOf<Int>()
+        val minDistance = 5 // Minimum distance between peaks (samples)
+
+        for (i in 1 until data.size - 1) {
+            // Check if it's a local maximum AND exceeds threshold
+            if (data[i] > data[i - 1] &&
+                data[i] > data[i + 1] &&
+                data[i] > threshold
+            ) {
+                // Check distance from previous peak
+                if (peaks.isEmpty() || i - peaks.last() >= minDistance) {
+                    peaks.add(i)
+                }
+            }
+        }
+
+        return peaks
+    }
+
+    private fun updateChartWithBlinkDetection() {
+        try {
+            if (!isAdded || isDetached || allDataPoints.isEmpty()) {
+                return
+            }
+
+            // Get the current range to display
+            val safeStart = currentStartIndex.coerceIn(0, allDataPoints.size - 1)
+            val safeEnd = currentEndIndex.coerceIn(1, allDataPoints.size)
+
+            if (safeStart >= safeEnd) {
+                return
+            }
+
+            val entries = mutableListOf<Entry>()
+            val blinkEntries = mutableListOf<Entry>()
+
+            for (i in safeStart until safeEnd) {
+                val point = allDataPoints[i]
+                entries.add(Entry((i - safeStart).toFloat(), point.capacitance.toFloat()))
+
+                // Mark blinks if this index is in the spike list
+                if (currentSpikeIndices.contains(i)) {
+                    blinkEntries.add(Entry((i - safeStart).toFloat(), point.capacitance.toFloat()))
+                }
+            }
+
+            if (entries.isEmpty()) {
+                showEmptyState()
+                return
+            }
+
+            // Create data set for the main data
+            val dataSet = LineDataSet(entries, "Capacitance (pF)").apply {
+                color = Color.BLUE
+                setCircleColor(Color.BLUE)
+                lineWidth = 2f
+                circleRadius = 2f
+                setDrawCircleHole(false)
+                valueTextColor = Color.BLACK
+                valueTextSize = 8f
+                setDrawValues(false)
+                setDrawFilled(true)
+                fillColor = Color.argb(50, 0, 0, 255)
+                fillAlpha = 50
+                mode = LineDataSet.Mode.LINEAR
+                setDrawHorizontalHighlightIndicator(false)
+                setDrawVerticalHighlightIndicator(false)
+            }
+
+            val lineData = LineData(dataSet)
+
+            // Add blink markers as a separate data set if blinks exist
+            if (blinkEntries.isNotEmpty()) {
+                val blinkDataSet = LineDataSet(blinkEntries, "Blinks Detected").apply {
+                    color = Color.RED
+                    setCircleColor(Color.RED)
+                    circleRadius = 8f
+                    setDrawCircleHole(true)
+                    circleHoleColor = Color.RED
+                    lineWidth = 0f // No line, just circles
+                    setDrawValues(false)
+                    setDrawFilled(false)
+                    setDrawHorizontalHighlightIndicator(false)
+                    setDrawVerticalHighlightIndicator(false)
+                }
+                lineData.addDataSet(blinkDataSet)
+
+                // Update info with blink count
+                val blinkCount = currentSpikeIndices.count { it in safeStart until safeEnd }
+                val totalBlinkCount = currentSpikeIndices.size
+                binding.textFileInfo.text = """
+                    File: ${File(currentFilePath).name}
+                    Blinks: $blinkCount (total: $totalBlinkCount) shown in this view
+                """.trimIndent()
+            } else {
+                // Update info without blinks
+                val infoText = """
+                    File: ${File(currentFilePath).name}
+                    Points: ${allDataPoints.size}
+                """.trimIndent()
+                binding.textFileInfo.text = infoText
+            }
+
+            lineChart.data = lineData
+            lineChart.setVisibleXRangeMaximum(DISPLAY_POINTS.toFloat())
+            lineChart.fitScreen()
+            lineChart.invalidate()
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating chart with blink detection", e)
+        }
+    }
+
+    private fun showBlinkDetectionOptions(spikeIndices: List<Int>) {
+        if (spikeIndices.isEmpty()) return
+
+        val options = mutableListOf<String>()
+        val actions = mutableListOf<() -> Unit>()
+
+        options.add("📊 Show Blink Statistics")
+        actions.add { showBlinkStatistics() }
+
+        options.add("📋 Copy Blink Data")
+        actions.add { copyBlinkData() }
+
+        options.add("🎯 Show Only Blinks")
+        actions.add { showOnlyBlinks() }
+
+        AlertDialog.Builder(requireContext())
+            .setTitle("Blink Detection Results")
+            .setItems(options.toTypedArray()) { _, which ->
+                actions[which].invoke()
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    private fun showBlinkStatistics() {
+        if (currentSpikeIndices.isEmpty()) {
+            Toast.makeText(requireContext(), "No blinks detected", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val blinkData = currentSpikeIndices.map { index ->
+            allDataPoints.getOrNull(index)
+        }.filterNotNull()
+
+        if (blinkData.isEmpty()) {
+            Toast.makeText(requireContext(), "No blink data available", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val stats = buildString {
+            appendLine("📊 BLINK STATISTICS")
+            appendLine("═".repeat(40))
+            appendLine()
+            appendLine("Total Blinks: ${blinkData.size}")
+            appendLine()
+
+            // Calculate blink intervals if more than 1 blink
+            if (blinkData.size > 1) {
+                val intervals = mutableListOf<Double>()
+                for (i in 0 until blinkData.size - 1) {
+                    val interval = (blinkData[i + 1].timestamp - blinkData[i].timestamp).toDouble()
+                    intervals.add(interval)
+                }
+
+                val avgInterval = intervals.average()
+                val minInterval = intervals.minOrNull() ?: 0.0
+                val maxInterval = intervals.maxOrNull() ?: 0.0
+                val blinkRate = if (avgInterval > 0) 60000.0 / avgInterval else 0.0 // blinks per minute
+
+                appendLine("Interval Statistics:")
+                appendLine("  Average: ${String.format("%.1f", avgInterval)} ms")
+                appendLine("  Min: ${String.format("%.1f", minInterval)} ms")
+                appendLine("  Max: ${String.format("%.1f", maxInterval)} ms")
+                appendLine("  Blink Rate: ${String.format("%.1f", blinkRate)} blinks/min")
+                appendLine()
+            }
+
+            // Show first few and last few blink times
+            if (blinkData.size > 0) {
+                appendLine("First 5 blinks:")
+                blinkData.take(5).forEachIndexed { index, point ->
+                    appendLine("  ${index + 1}. ${point.formattedTime} - ${point.capacitance} pF")
+                }
+                if (blinkData.size > 10) {
+                    appendLine("  ...")
+                    blinkData.takeLast(5).forEachIndexed { index, point ->
+                        val actualIndex = blinkData.size - 5 + index
+                        appendLine("  ${actualIndex + 1}. ${point.formattedTime} - ${point.capacitance} pF")
+                    }
+                }
+            }
+        }
+
+        AlertDialog.Builder(requireContext())
+            .setTitle("Blink Statistics")
+            .setMessage(stats)
+            .setPositiveButton("Close", null)
+            .setNegativeButton("Copy") { _, _ ->
+                copyToClipboard(stats)
+            }
+            .show()
+    }
+
+    private fun copyBlinkData() {
+        if (currentSpikeIndices.isEmpty()) {
+            Toast.makeText(requireContext(), "No blink data to copy", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val blinkData = currentSpikeIndices.map { index ->
+            val point = allDataPoints.getOrNull(index)
+            if (point != null) {
+                "${point.formattedTime}, ${point.capacitance}"
+            } else null
+        }.filterNotNull()
+
+        val dataString = blinkData.joinToString("\n")
+        copyToClipboard(dataString)
+        Toast.makeText(requireContext(), "Blink data copied to clipboard", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun showOnlyBlinks() {
+        if (currentSpikeIndices.isEmpty()) {
+            Toast.makeText(requireContext(), "No blinks to show", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // Zoom to the first blink
+        val firstBlink = currentSpikeIndices.firstOrNull() ?: return
+        val start = (firstBlink - 50).coerceAtLeast(0)
+        val end = (firstBlink + 100).coerceAtMost(allDataPoints.size)
+
+        currentStartIndex = start
+        currentEndIndex = end
+        updateChartWithBlinkDetection()
+        updateScrollButtons()
+    }
+
+    // ==================== HELPER FUNCTIONS ====================
+
+    private fun copyToClipboard(text: String) {
+        try {
+            val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            val clip = android.content.ClipData.newPlainText("Blink Data", text)
+            clipboard.setPrimaryClip(clip)
+            Toast.makeText(requireContext(), "Copied to clipboard", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error copying to clipboard", e)
+        }
+    }
+
+    private fun savitzkyGolayFilter(
+        data: DoubleArray,
+        windowLength: Int,
+        polyorder: Int = 3
+    ): DoubleArray {
+        if (data.isEmpty()) return data
+
+        val halfWindow = windowLength / 2
+        val result = DoubleArray(data.size)
+
+        for (i in data.indices) {
+            var sum = 0.0
+            var count = 0
+            for (j in -halfWindow..halfWindow) {
+                val idx = i + j
+                if (idx in data.indices) {
+                    sum += data[idx]
+                    count++
+                }
+            }
+            result[i] = if (count > 0) sum / count else data[i]
+        }
+        return result
+    }
+
+    private fun DoubleArray.std(): Double {
+        if (isEmpty()) return 0.0
+        val mean = average()
+        val variance = map { (it - mean) * (it - mean) }.average()
+        return kotlin.math.sqrt(variance)
+    }
+
+    // ==================== SCROLLING FUNCTIONS ====================
+
     private fun scrollData(step: Int) {
         if (allDataPoints.isEmpty() || allDataPoints.size <= DISPLAY_POINTS) return
 
         var newStart = currentStartIndex + step
         var newEnd = currentEndIndex + step
 
-        // Ensure we don't go out of bounds
         if (newStart < 0) {
             newStart = 0
             newEnd = Math.min(DISPLAY_POINTS, allDataPoints.size)
@@ -263,7 +702,6 @@ class PlotFragment : Fragment() {
             newStart = Math.max(0, allDataPoints.size - DISPLAY_POINTS)
         }
 
-        // Ensure we have at least some data to show
         if (newEnd - newStart < 10) {
             if (newStart > 0) {
                 newStart = Math.max(0, newEnd - 10)
@@ -275,20 +713,21 @@ class PlotFragment : Fragment() {
         currentStartIndex = newStart
         currentEndIndex = newEnd
 
-        updateChartWithRange(currentStartIndex, currentEndIndex)
+        // Use blink detection update if available, otherwise regular update
+        if (currentSpikeIndices.isNotEmpty()) {
+            updateChartWithBlinkDetection()
+        } else {
+            updateChartWithRange(currentStartIndex, currentEndIndex)
+        }
         updateScrollButtons()
     }
 
-    /**
-     * Update chart with a specific range of data
-     */
     private fun updateChartWithRange(startIndex: Int, endIndex: Int) {
         try {
             if (!isAdded || isDetached || allDataPoints.isEmpty()) {
                 return
             }
 
-            // Ensure valid range
             val safeStart = startIndex.coerceIn(0, allDataPoints.size - 1)
             val safeEnd = endIndex.coerceIn(1, allDataPoints.size)
 
@@ -296,12 +735,9 @@ class PlotFragment : Fragment() {
                 return
             }
 
-            Log.d(TAG, "Updating chart: $safeStart to $safeEnd of ${allDataPoints.size}")
-
             val entries = mutableListOf<Entry>()
             for (i in safeStart until safeEnd) {
                 val point = allDataPoints[i]
-                // Adjust x-value to start from 0 for this viewport
                 entries.add(Entry((i - safeStart).toFloat(), point.capacitance.toFloat()))
             }
 
@@ -310,7 +746,6 @@ class PlotFragment : Fragment() {
                 return
             }
 
-            // Create dataset with optimized settings
             val dataSet = LineDataSet(entries, "Capacitance (pF)").apply {
                 color = Color.BLUE
                 setCircleColor(Color.BLUE)
@@ -331,29 +766,27 @@ class PlotFragment : Fragment() {
             val lineData = LineData(dataSet)
             lineChart.data = lineData
 
-            // Set the visible range
             lineChart.setVisibleXRangeMaximum(DISPLAY_POINTS.toFloat())
-
-            // Fit to screen to show all data in range
             lineChart.fitScreen()
 
-            // Update info text
             val infoText = """
                 Showing: ${safeStart + 1} - ${safeEnd} of ${allDataPoints.size} points
                 File: ${File(currentFilePath).name}
             """.trimIndent()
             binding.textFileInfo.text = infoText
 
-            // Update latest value if we're at the end
             if (safeEnd == allDataPoints.size && allDataPoints.isNotEmpty()) {
                 val lastPoint = allDataPoints.last()
                 binding.textLatestValue.text = "Latest: ${lastPoint.capacitance} pF"
-            } else {
-                // Show the last value in the current view
-                val lastPoint = allDataPoints[safeEnd - 1]
-                binding.textLatestValue.text = "Last in view: ${lastPoint.capacitance} pF"
             }
 
+            dataManager?.let { dm ->
+                try {
+                    val stats = dm.getPlotStatistics()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error getting statistics", e)
+                }
+            }
 
             lineChart.invalidate()
             currentStartIndex = safeStart
@@ -364,9 +797,6 @@ class PlotFragment : Fragment() {
         }
     }
 
-    /**
-     * Update the scroll button visibility and states
-     */
     private fun updateScrollButtons() {
         if (allDataPoints.isEmpty() || allDataPoints.size <= DISPLAY_POINTS) {
             binding.buttonScrollLeft.visibility = View.GONE
@@ -379,33 +809,25 @@ class PlotFragment : Fragment() {
         binding.buttonScrollRight.visibility = View.VISIBLE
         binding.textRangeInfo.visibility = View.VISIBLE
 
-        // Enable/disable buttons based on position
         binding.buttonScrollLeft.isEnabled = currentStartIndex > 0
         binding.buttonScrollRight.isEnabled = currentEndIndex < allDataPoints.size
 
-        // Update button text with positions
         binding.buttonScrollLeft.text = "◀ ${currentStartIndex + 1}"
         binding.buttonScrollRight.text = "${currentEndIndex} ▶"
 
-        // Update info text with range
         val rangeText = "Showing: ${currentStartIndex + 1} - ${currentEndIndex} of ${allDataPoints.size}"
         binding.textRangeInfo.text = rangeText
     }
 
     // ==================== FILE LOADING FUNCTIONS ====================
 
-    /**
-     * Load all data from a CSV file
-     */
     private fun loadAllDataFromFile(file: File): List<DataManager.CapacitanceDataPoint> {
         val points = mutableListOf<DataManager.CapacitanceDataPoint>()
         try {
             file.bufferedReader().use { reader ->
-                // Skip header if exists
                 var firstLine = true
                 reader.forEachLine { line ->
                     if (firstLine) {
-                        // Check if it's a header
                         if (line.contains("timestamp") || line.contains("time") || line.contains("capacitance")) {
                             firstLine = false
                             return@forEachLine
@@ -436,9 +858,6 @@ class PlotFragment : Fragment() {
         return points
     }
 
-    /**
-     * Get the SerialData directory
-     */
     private fun getSerialDataDirectory(): File {
         val baseDir = requireContext().getExternalFilesDir(null)
         val serialDataDir = File(baseDir, "SerialData")
@@ -448,9 +867,6 @@ class PlotFragment : Fragment() {
         return serialDataDir
     }
 
-    /**
-     * Get all data files from the app's SerialData directory
-     */
     private fun getAppDataFiles(): List<File> {
         val serialDataDir = getSerialDataDirectory()
         return serialDataDir.listFiles { file ->
@@ -458,9 +874,6 @@ class PlotFragment : Fragment() {
         }?.sortedByDescending { it.lastModified() } ?: emptyList()
     }
 
-    /**
-     * Load the latest file automatically
-     */
     private fun loadLatestFile() {
         try {
             val files = getAppDataFiles()
@@ -477,9 +890,6 @@ class PlotFragment : Fragment() {
         }
     }
 
-    /**
-     * Show dialog with app's stored files
-     */
     private fun showAppFilesDialog() {
         try {
             val files = getAppDataFiles()
@@ -493,7 +903,6 @@ class PlotFragment : Fragment() {
                 return
             }
 
-            // Create list of file names with details
             val fileItems = files.map { file ->
                 val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
                 val size = formatFileSize(file.length())
@@ -520,9 +929,6 @@ class PlotFragment : Fragment() {
         }
     }
 
-    /**
-     * Open file manager at the app's SerialData directory
-     */
     private fun openFileManager() {
         try {
             val serialDataDir = getSerialDataDirectory()
@@ -561,9 +967,6 @@ class PlotFragment : Fragment() {
         }
     }
 
-    /**
-     * Handle file picker result (for external files if needed)
-     */
     private fun handleFilePickerResult(uri: Uri) {
         try {
             val documentFile = DocumentFile.fromSingleUri(requireContext(), uri)
@@ -594,9 +997,6 @@ class PlotFragment : Fragment() {
         }
     }
 
-    /**
-     * Load file from path - NOW LOADS ALL DATA
-     */
     private fun loadFileFromPath(filePath: String) {
         try {
             currentFilePath = filePath
@@ -606,17 +1006,19 @@ class PlotFragment : Fragment() {
                 return
             }
 
-            // Load ALL data directly from file
             val allPoints = loadAllDataFromFile(file)
 
             if (allPoints.isNotEmpty()) {
                 allDataPoints.clear()
                 allDataPoints.addAll(allPoints)
-
-                // Sort by timestamp if needed
                 allDataPoints.sortBy { it.timestamp }
 
                 Log.d(TAG, "Loaded ${allDataPoints.size} total data points")
+
+                // Reset blink detection data
+                currentSpikeIndices = emptyList()
+                currentData = doubleArrayOf()
+                currentFilteredData = doubleArrayOf()
 
                 val displayText = """
                     File: ${file.name}
@@ -625,18 +1027,11 @@ class PlotFragment : Fragment() {
                 """.trimIndent()
                 binding.textFileInfo.text = displayText
 
-                // Reset viewport
                 currentStartIndex = 0
                 currentEndIndex = if (allDataPoints.size > DISPLAY_POINTS) {
                     DISPLAY_POINTS
                 } else {
                     allDataPoints.size
-                }
-
-                // Update the DataManager with the loaded data (optional)
-                dataManager?.let { dm ->
-                    // You might want to add a method to set data directly
-                    // For now, we'll just use the loaded data
                 }
 
                 updateChartWithRange(currentStartIndex, currentEndIndex)
@@ -653,9 +1048,6 @@ class PlotFragment : Fragment() {
         }
     }
 
-    /**
-     * Format file size
-     */
     private fun formatFileSize(size: Long): String {
         return when {
             size >= 1024 * 1024 * 1024 -> String.format("%.2f GB", size / (1024.0 * 1024.0 * 1024.0))
@@ -665,16 +1057,17 @@ class PlotFragment : Fragment() {
         }
     }
 
-    // ==================== UI STATE FUNCTIONS ====================
-
     private fun updateChart() {
-        // Update chart with current range
         updateChartWithRange(currentStartIndex, currentEndIndex)
     }
 
     private fun showEmptyState() {
         try {
             allDataPoints.clear()
+            currentSpikeIndices = emptyList()
+            currentData = doubleArrayOf()
+            currentFilteredData = doubleArrayOf()
+
             val emptyData = LineData()
             lineChart.data = emptyData
             lineChart.invalidate()
@@ -683,6 +1076,7 @@ class PlotFragment : Fragment() {
             binding.textRangeInfo.visibility = View.GONE
             binding.buttonScrollLeft.visibility = View.GONE
             binding.buttonScrollRight.visibility = View.GONE
+            binding.buttonDetectBlink.isEnabled = false
         } catch (e: Exception) {
             Log.e(TAG, "Error showing empty state", e)
         }
@@ -694,8 +1088,12 @@ class PlotFragment : Fragment() {
             currentFilePath = ""
             currentStartIndex = 0
             currentEndIndex = 0
+            currentSpikeIndices = emptyList()
+            currentData = doubleArrayOf()
+            currentFilteredData = doubleArrayOf()
             dataManager?.clearPlotData()
             showEmptyState()
+            binding.buttonDetectBlink.isEnabled = false
             Toast.makeText(requireContext(), "Data cleared", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             Log.e(TAG, "Error clearing data", e)
