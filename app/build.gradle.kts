@@ -53,4 +53,24 @@ dependencies {
     implementation("com.github.mik3y:usb-serial-for-android:3.8.0")
     implementation("com.google.code.gson:gson:2.11.0")
     implementation("com.github.PhilJay:MPAndroidChart:v3.1.0")
+    implementation("org.jetbrains.kotlinx:dataframe:0.15.0")
+
+    // KMath for numerical computing
+    implementation("space.kscience:kmath-core:0.5.0")
+    implementation("space.kscience:kmath-commons:0.5.0")
+    implementation("space.kscience:kmath-stat:0.5.0")
+
+    // For Butterworth filter implementation (using Apache Commons Math)
+    implementation("org.apache.commons:commons-math3:3.6.1")
+
+    // Kandy plotting library
+    implementation("org.jetbrains.kotlinx:kandy-lets-plot:0.8.4") {
+        exclude(group = "org.apache.poi")
+        exclude(group = "org.apache.commons", module = "commons-math3")
+    }
+
+    implementation("androidx.appcompat:appcompat:1.7.0")
+
+    // Lifecycle for coroutines
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0")
 }
