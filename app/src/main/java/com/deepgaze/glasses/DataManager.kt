@@ -7,6 +7,7 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import java.io.File
 import java.io.FileWriter
+import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -50,9 +51,9 @@ class DataManager(private val context: Context) {
             prefs.edit().putString(KEY_SAVED_RECORDS, json).apply()
             prefs.edit().putInt(KEY_RECORD_COUNT, records.size).apply()
 
-            // Also add to plot data - FIX: Convert Capacitance to Double properly
+            // Also add to plot data
             try {
-                val capacitance = record.Capacitance.toDouble() // Use toDouble() instead of toDoubleOrNull()
+                val capacitance = record.Capacitance.toDouble()
                 addPlotDataPoint(capacitance)
             } catch (e: Exception) {
                 Log.e(TAG, "Error adding to plot data", e)
@@ -97,10 +98,22 @@ class DataManager(private val context: Context) {
             val fileName = "serial_data_${dateFormat.format(Date())}.csv"
             val file = File(context.getExternalFilesDir(null), fileName)
 
-            FileWriter(file).use { writer ->
+            var writer: FileWriter? = null
+            try {
+                writer = FileWriter(file)
                 writer.write("Timestamp,Capacitance\n")
-                records.forEach { record ->
+                for (record in records) {
                     writer.write("${record.Time},${record.Capacitance}\n")
+                }
+                writer.flush()
+            } catch (e: IOException) {
+                Log.e(TAG, "Error writing CSV", e)
+                return null
+            } finally {
+                try {
+                    writer?.close()
+                } catch (e: IOException) {
+                    // Ignore close error
                 }
             }
 
@@ -125,7 +138,10 @@ class DataManager(private val context: Context) {
                 plotDataPoints.removeAt(0)
             }
 
-            currentFilePath?.let { savePlotDataToFile(it) }
+            // Safe null handling
+            currentFilePath?.let { filePath ->
+                savePlotDataToFile(filePath)
+            }
 
             return true
         } catch (e: Exception) {
@@ -134,13 +150,16 @@ class DataManager(private val context: Context) {
         }
     }
 
+
     fun addPlotDataPoints(points: List<CapacitanceDataPoint>) {
         try {
             plotDataPoints.addAll(points)
             if (plotDataPoints.size > maxPlotPoints) {
                 val excess = plotDataPoints.size - maxPlotPoints
-                repeat(excess) {
+                var removed = 0
+                while (removed < excess) {
                     plotDataPoints.removeAt(0)
+                    removed++
                 }
             }
         } catch (e: Exception) {
@@ -153,11 +172,15 @@ class DataManager(private val context: Context) {
     }
 
     fun getPlotDataPoints(count: Int): List<CapacitanceDataPoint> {
-        return plotDataPoints.takeLast(count)
+        return if (plotDataPoints.size <= count) {
+            plotDataPoints.toList()
+        } else {
+            plotDataPoints.subList(plotDataPoints.size - count, plotDataPoints.size)
+        }
     }
 
     fun getLatestPlotPoint(): CapacitanceDataPoint? {
-        return plotDataPoints.lastOrNull()
+        return if (plotDataPoints.isNotEmpty()) plotDataPoints.last() else null
     }
 
     fun getPlotPointCount(): Int {
@@ -177,12 +200,23 @@ class DataManager(private val context: Context) {
     fun savePlotDataToFile(filePath: String): Boolean {
         try {
             val file = File(filePath)
-            FileWriter(file, true).use { writer ->
-                val latestPoint = plotDataPoints.lastOrNull()
-                latestPoint?.let {
-                    writer.write("${it.timestamp} ${it.capacitance}\n")
+            var writer: FileWriter? = null
+            try {
+                writer = FileWriter(file, true)
+                if (plotDataPoints.isNotEmpty()) {
+                    val latestPoint = plotDataPoints.last()
+                    writer.write("${latestPoint.timestamp} ${latestPoint.capacitance}\n")
                 }
                 writer.flush()
+            } catch (e: IOException) {
+                Log.e(TAG, "Error saving plot data to file", e)
+                return false
+            } finally {
+                try {
+                    writer?.close()
+                } catch (e: IOException) {
+                    // Ignore
+                }
             }
             return true
         } catch (e: Exception) {
@@ -194,35 +228,56 @@ class DataManager(private val context: Context) {
     fun loadPlotDataFromFile(file: File): Boolean {
         try {
             val points = mutableListOf<CapacitanceDataPoint>()
+            var reader: java.io.BufferedReader? = null
 
-            file.bufferedReader().use { reader ->
-                reader.forEachLine { line ->
+            try {
+                reader = file.bufferedReader()
+                var line: String? = reader.readLine()
+                while (line != null) {
                     try {
-                        val parts = line.trim().split(Regex("\\s+"))
-                        if (parts.size >= 2) {
-                            val capacitance = parts.last().toDouble()
-                            val timestamp = if (parts.first().toLongOrNull() != null) {
-                                parts.first().toLong()
-                            } else {
-                                try {
-                                    logDateFormat.parse("${parts.first()}.000")?.time ?: System.currentTimeMillis()
-                                } catch (e: Exception) {
-                                    System.currentTimeMillis()
+                        val trimmedLine = line.trim()
+                        if (trimmedLine.isNotEmpty()) {
+                            val parts = trimmedLine.split(Regex("\\s+"))
+                            if (parts.size >= 2) {
+                                val capacitance = parts.last().toDouble()
+                                val timestamp = if (parts.first().toLongOrNull() != null) {
+                                    parts.first().toLong()
+                                } else {
+                                    try {
+                                        logDateFormat.parse("${parts.first()}.000")?.time ?: System.currentTimeMillis()
+                                    } catch (e: Exception) {
+                                        System.currentTimeMillis()
+                                    }
                                 }
+                                val formattedTime = logDateFormat.format(Date(timestamp))
+                                points.add(CapacitanceDataPoint(timestamp, capacitance, formattedTime))
                             }
-                            val formattedTime = logDateFormat.format(Date(timestamp))
-                            points.add(CapacitanceDataPoint(timestamp, capacitance, formattedTime))
                         }
                     } catch (e: Exception) {
                         // Skip invalid lines
                         Log.d(TAG, "Skipping line: $line")
                     }
+                    line = reader.readLine()
+                }
+            } catch (e: IOException) {
+                Log.e(TAG, "Error reading file", e)
+                return false
+            } finally {
+                try {
+                    reader?.close()
+                } catch (e: IOException) {
+                    // Ignore
                 }
             }
 
             if (points.isNotEmpty()) {
                 plotDataPoints.clear()
-                plotDataPoints.addAll(points.takeLast(maxPlotPoints))
+                val pointsToAdd = if (points.size > maxPlotPoints) {
+                    points.subList(points.size - maxPlotPoints, points.size)
+                } else {
+                    points
+                }
+                plotDataPoints.addAll(pointsToAdd)
                 Log.d(TAG, "Loaded ${plotDataPoints.size} plot data points from file")
                 return true
             }
@@ -252,10 +307,22 @@ class DataManager(private val context: Context) {
             val fileName = "plot_data_${dateFormat.format(Date())}.csv"
             val file = File(context.getExternalFilesDir(null), fileName)
 
-            FileWriter(file).use { writer ->
+            var writer: FileWriter? = null
+            try {
+                writer = FileWriter(file)
                 writer.write("Timestamp,Capacitance\n")
-                plotDataPoints.forEach { point ->
+                for (point in plotDataPoints) {
                     writer.write("${point.timestamp},${point.capacitance}\n")
+                }
+                writer.flush()
+            } catch (e: IOException) {
+                Log.e(TAG, "Error writing CSV", e)
+                return null
+            } finally {
+                try {
+                    writer?.close()
+                } catch (e: IOException) {
+                    // Ignore
                 }
             }
 
