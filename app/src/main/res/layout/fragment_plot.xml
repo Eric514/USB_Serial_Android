@@ -137,21 +137,12 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Detect Blinks"
-            android:textSize="13sp"
+            android:layout_marginStart="4dp"
             android:layout_marginEnd="4dp"
             android:backgroundTint="#FF5722"
+            android:text="👁️ Detect Blinks"
             android:textColor="#FFFFFF" />
 
-        <Button
-            android:id="@+id/buttonZoomReset"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="4dp"
-            android:layout_weight="1"
-            android:backgroundTint="#9E9E9E"
-            android:text="🔍 Reset"
-            android:textColor="#FFFFFF" />
     </LinearLayout>
 
 </LinearLayout>

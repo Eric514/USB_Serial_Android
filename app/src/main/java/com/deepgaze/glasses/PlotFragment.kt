@@ -214,26 +214,13 @@ class PlotFragment : Fragment() {
                 }
             }
 
-            binding.buttonZoomReset.setOnClickListener {
-                try {
-                    if (allDataPoints.size > DISPLAY_POINTS) {
-                        currentStartIndex = 0
-                        currentEndIndex = DISPLAY_POINTS
-                    } else {
-                        currentStartIndex = 0
-                        currentEndIndex = allDataPoints.size
-                    }
-                    updateChartWithRange(currentStartIndex, currentEndIndex)
-                    updateScrollButtons()
-                    lineChart.fitScreen()
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error resetting zoom", e)
-                }
-            }
-
             // Blink Detection Button
             binding.buttonDetectBlink.setOnClickListener {
-                detectBlink()
+                if (allDataPoints.isEmpty()) {
+                    Toast.makeText(requireContext(), "No data to analyze. Load a file first.", Toast.LENGTH_SHORT).show()
+                } else {
+                    detectBlink()
+                }
             }
 
             // Navigation buttons
@@ -256,8 +243,9 @@ class PlotFragment : Fragment() {
     // ==================== BLINK DETECTION FUNCTIONS ====================
 
     private fun detectBlink() {
+        // Check if data is loaded
         if (allDataPoints.isEmpty()) {
-            Toast.makeText(requireContext(), "No data to analyze", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), "No data to analyze. Load a file first.", Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -277,7 +265,7 @@ class PlotFragment : Fragment() {
         lifecycleScope.launch {
             isDetectingBlink = true
             binding.buttonDetectBlink.isEnabled = false
-            binding.buttonDetectBlink.text = "Detecting..."
+            binding.buttonDetectBlink.text = "⏳ Detecting..."
 
             Toast.makeText(requireContext(), "Detecting blinks...", Toast.LENGTH_SHORT).show()
 
@@ -291,18 +279,6 @@ class PlotFragment : Fragment() {
                         val peaks = detectPositivePeaks(filtered)
 
                         Log.d(TAG, "Blink detection results: ${peaks.size} peaks found")
-                        println("=".repeat(50))
-                        println("BLINK DETECTION RESULTS:")
-                        println("Blinks detected: ${peaks.size}")
-                        if (peaks.isNotEmpty()) {
-                            println("Peak indices: ${peaks.take(20)}")
-                            // Calculate blink rate
-                            if (peaks.size > 1) {
-                                val averageInterval = (peaks.last() - peaks.first()).toDouble() / (peaks.size - 1)
-                                println("Average interval between blinks: $averageInterval samples")
-                            }
-                        }
-                        println("=".repeat(50))
 
                         Pair(filtered, peaks)
                     } catch (e: Exception) {
@@ -314,24 +290,27 @@ class PlotFragment : Fragment() {
                 currentFilteredData = filteredData
                 currentSpikeIndices = spikeIndices
 
-                // Update chart with blink detection results
                 withContext(Dispatchers.Main) {
-                    // Create a new list with blink markers
+                    // Update chart with blink markers
                     updateChartWithBlinkDetection()
 
-                    // Show blink count
                     val message = if (spikeIndices.isNotEmpty()) {
-                        "Found ${spikeIndices.size} blinks!"
+                        "Found ${spikeIndices.size} blinks! 🎉"
                     } else {
                         "No blinks detected. Try adjusting parameters."
                     }
                     Toast.makeText(requireContext(), message, Toast.LENGTH_LONG).show()
 
                     // Update info text
-                    val blinkInfo = "Blinks detected: ${spikeIndices.size}"
+                    if (spikeIndices.isNotEmpty()) {
+                        val blinkInfo = "Blinks: ${spikeIndices.size}"
+                        binding.textLatestValue.text = "$blinkInfo | Latest: ${allDataPoints.last().capacitance} pF"
+                    }
 
-                    // Show blink detection options after detection
-                    showBlinkDetectionOptions(spikeIndices)
+                    // Show blink detection options
+                    if (spikeIndices.isNotEmpty()) {
+                        showBlinkDetectionOptions(spikeIndices)
+                    }
                 }
 
             } catch (e: Exception) {
@@ -343,14 +322,19 @@ class PlotFragment : Fragment() {
                 withContext(Dispatchers.Main) {
                     isDetectingBlink = false
                     binding.buttonDetectBlink.isEnabled = true
-                    binding.buttonDetectBlink.text = "Detect Blinks"
+                    binding.buttonDetectBlink.text = "👁️ Detect Blinks"
                 }
             }
         }
     }
-
     private fun prepareDataForDetection() {
         try {
+            if (allDataPoints.isEmpty()) {
+                currentData = doubleArrayOf()
+                currentTimestamps = doubleArrayOf()
+                return
+            }
+
             val values = allDataPoints.map { it.capacitance.toDouble() }.toDoubleArray()
             val timestamps = allDataPoints.map { it.timestamp.toDouble() }.toDoubleArray()
 
@@ -360,6 +344,8 @@ class PlotFragment : Fragment() {
             Log.d(TAG, "Prepared ${currentData.size} data points for detection")
         } catch (e: Exception) {
             Log.e(TAG, "Error preparing data", e)
+            currentData = doubleArrayOf()
+            currentTimestamps = doubleArrayOf()
         }
     }
 
@@ -423,7 +409,7 @@ class PlotFragment : Fragment() {
                 return
             }
 
-            // Get the current range to display
+            // Ensure we have valid range
             val safeStart = currentStartIndex.coerceIn(0, allDataPoints.size - 1)
             val safeEnd = currentEndIndex.coerceIn(1, allDataPoints.size)
 
@@ -489,15 +475,16 @@ class PlotFragment : Fragment() {
                 val blinkCount = currentSpikeIndices.count { it in safeStart until safeEnd }
                 val totalBlinkCount = currentSpikeIndices.size
                 binding.textFileInfo.text = """
-                    File: ${File(currentFilePath).name}
-                    Blinks: $blinkCount (total: $totalBlinkCount) shown in this view
-                """.trimIndent()
+                File: ${File(currentFilePath).name}
+                Blinks: $blinkCount (total: $totalBlinkCount)
+            """.trimIndent()
             } else {
                 // Update info without blinks
                 val infoText = """
-                    File: ${File(currentFilePath).name}
-                    Points: ${allDataPoints.size}
-                """.trimIndent()
+                File: ${File(currentFilePath).name}
+                Points: ${allDataPoints.size}
+                ${if (currentSpikeIndices.isNotEmpty()) "Blinks: ${currentSpikeIndices.size}" else "No blinks detected"}
+            """.trimIndent()
                 binding.textFileInfo.text = infoText
             }
 
@@ -1020,11 +1007,14 @@ class PlotFragment : Fragment() {
                 currentData = doubleArrayOf()
                 currentFilteredData = doubleArrayOf()
 
+                // ✅ ENABLE blink detection button
+                binding.buttonDetectBlink.isEnabled = true
+
                 val displayText = """
-                    File: ${file.name}
-                    Total Points: ${allDataPoints.size}
-                    Size: ${formatFileSize(file.length())}
-                """.trimIndent()
+                File: ${file.name}
+                Total Points: ${allDataPoints.size}
+                Size: ${formatFileSize(file.length())}
+            """.trimIndent()
                 binding.textFileInfo.text = displayText
 
                 currentStartIndex = 0
