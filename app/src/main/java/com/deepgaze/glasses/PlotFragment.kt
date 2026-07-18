@@ -158,17 +158,17 @@ class PlotFragment : Fragment() {
                     labelCount = 10
                     setAvoidFirstLastClipping(true)
                     setDrawAxisLine(true)
+                    // Don't set axisMinimum or axisMaximum for x-axis
                 }
 
                 axisLeft.apply {
                     textColor = Color.BLACK
                     setDrawGridLines(true)
                     gridColor = Color.LTGRAY
-                    axisMinimum = 0f
-                    setDrawZeroLine(true)
-                    zeroLineColor = Color.GRAY
-                    zeroLineWidth = 1f
+                    // ✅ Don't set axisMinimum - let it auto-calculate
+                    setDrawZeroLine(false) // Don't force zero line
                     setDrawAxisLine(true)
+                    // No axisMinimum or axisMaximum set - will auto-calculate from data
                 }
 
                 axisRight.isEnabled = false
@@ -182,6 +182,9 @@ class PlotFragment : Fragment() {
                 setMaxHighlightDistance(0f)
                 setViewPortOffsets(10f, 10f, 10f, 10f)
                 setExtraOffsets(5f, 5f, 5f, 5f)
+
+                // ✅ Enable auto-scaling
+                setAutoScaleMinMaxEnabled(true)
             }
 
             showEmptyState()
