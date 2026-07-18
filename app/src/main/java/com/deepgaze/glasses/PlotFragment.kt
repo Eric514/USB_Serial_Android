@@ -31,7 +31,6 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
-import kotlin.collections.toDoubleArray
 
 class PlotFragment : Fragment() {
     private var _binding: FragmentPlotBinding? = null
@@ -39,7 +38,7 @@ class PlotFragment : Fragment() {
 
     private lateinit var lineChart: LineChart
     private var allDataPoints = mutableListOf<DataManager.CapacitanceDataPoint>()
-    private val DISPLAY_POINTS = 200
+    private val DISPLAY_POINTS = 1000
     private val TAG = "PlotFragment"
     private var dataManager: DataManager? = null
     private var patientId = ""
@@ -52,7 +51,7 @@ class PlotFragment : Fragment() {
     private var currentSpikeIndices: List<Int> = emptyList()
     private var currentFilteredData: DoubleArray = doubleArrayOf()
     private var isDetectingBlink = false
-    private var showFilteredData = false // Flag to switch between raw and filtered data
+    private var showFilteredData = false
 
     // Viewport tracking for scrolling
     private var currentStartIndex = 0
@@ -244,6 +243,7 @@ class PlotFragment : Fragment() {
 
     // ==================== BLINK DETECTION FUNCTIONS ====================
 
+
     private fun detectBlink() {
         if (allDataPoints.isEmpty()) {
             Toast.makeText(requireContext(), "No data to analyze. Load a file first.", Toast.LENGTH_SHORT).show()
@@ -267,13 +267,43 @@ class PlotFragment : Fragment() {
             binding.buttonDetectBlink.isEnabled = false
             binding.buttonDetectBlink.text = "⏳ Detecting..."
 
-            Toast.makeText(requireContext(), "Detecting blinks...", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), "Processing data for blink detection...", Toast.LENGTH_SHORT).show()
 
             try {
-                val (filteredData, spikeIndices) = withContext(Dispatchers.IO) {
+                val result = withContext(Dispatchers.IO) {
                     try {
-                        // Apply Savitzky-Golay filter (simple moving average)
-                        val filtered = savitzkyGolayFilter(currentData, 41, 4)
+                        // Create StepNoiseCorrector with appropriate parameters
+                        val corrector = StepNoiseCorrector(
+                            detrend = true,
+                            detrendMethod = "smoothing",
+                            medianFilter = true,
+                            medianKernel = 5,
+                            filterNoise = true,
+                            cutoffFreq = 0.1,
+                            filterOrder = 4,
+                            window = 30,
+                            requiredStable = 30,
+                            maxIterations = 20,
+                            noiseThreshold = 3.0,
+                            lookAhead = 500
+                        )
+
+                        // Process the data
+                        val processedResult = corrector.process(currentData, currentTimestamps)
+
+                        // Get the final processed data - use finalData as fallback
+                        val processedData = if (processedResult.detrendedData != null) {
+                            processedResult.detrendedData!!
+                        } else {
+                            processedResult.finalData
+                        }
+
+                        Log.d(TAG, "Processed data size: ${processedData.size}")
+                        Log.d(TAG, "Detrended data available: ${processedResult.detrendedData != null}")
+                        Log.d(TAG, "Filtered data available: ${processedResult.filteredData != null}")
+
+                        // Apply Savitzky-Golay filter
+                        val filtered = savitzkyGolayFilter(processedData, 41, 4)
 
                         // Detect positive spikes
                         val peaks = detectPositivePeaks(filtered)
@@ -281,15 +311,21 @@ class PlotFragment : Fragment() {
                         Log.d(TAG, "Blink detection results: ${peaks.size} peaks found")
 
                         Pair(filtered, peaks)
+
                     } catch (e: Exception) {
-                        e.printStackTrace()
-                        Pair(currentData, emptyList<Int>())
+                        Log.e(TAG, "Error in StepNoiseCorrector", e)
+                        // Fallback: simple Savitzky-Golay on original data
+                        val filtered = savitzkyGolayFilter(currentData, 41, 4)
+                        val peaks = detectPositivePeaks(filtered)
+                        Pair(filtered, peaks)
                     }
                 }
 
+                val (filteredData, spikeIndices) = result
+
                 currentFilteredData = filteredData
                 currentSpikeIndices = spikeIndices
-                showFilteredData = true // Switch to filtered data view
+                showFilteredData = true
 
                 withContext(Dispatchers.Main) {
                     // Update chart with filtered data and blink markers
@@ -337,9 +373,13 @@ class PlotFragment : Fragment() {
                 return
             }
 
-            val values = allDataPoints.map { it.capacitance }.toDoubleArray()
-            // ✅ FIX: Convert Long to Double properly
-            val timestamps = allDataPoints.map { it.timestamp.toDouble() }.toDoubleArray()
+            val values = DoubleArray(allDataPoints.size) { index ->
+                allDataPoints[index].capacitance
+            }
+
+            val timestamps = DoubleArray(allDataPoints.size) { index ->
+                allDataPoints[index].timestamp.toDouble()
+            }
 
             currentData = values
             currentTimestamps = timestamps
@@ -358,14 +398,16 @@ class PlotFragment : Fragment() {
         val mean = data.average()
         val std = data.std()
 
-        val multipliers = listOf(1.5, 2.0, 2.5, 3.0, 3.5)
+        // Try multiple thresholds to find the best peaks
+        val multipliers = listOf(1.5, 2.0, 2.5, 3.0, 3.5, 4.0)
         var bestPeaks = emptyList<Int>()
         var bestScore = 0
 
         for (multiplier in multipliers) {
             val threshold = mean + (multiplier * std)
-            val peaks = findPeaks(data, threshold)
+            val peaks = findPeaksWithThreshold(data, threshold)
 
+            // Score peaks: prefer finding between 3 and 30 peaks with good spacing
             if (peaks.isNotEmpty() && peaks.size in 3..30 && peaks.size > bestScore) {
                 bestPeaks = peaks
                 bestScore = peaks.size
@@ -373,24 +415,27 @@ class PlotFragment : Fragment() {
             }
         }
 
+        // If no peaks found with standard thresholds, try lower threshold
         if (bestPeaks.isEmpty()) {
             val threshold = mean + (0.5 * std)
-            bestPeaks = findPeaks(data, threshold)
+            bestPeaks = findPeaksWithThreshold(data, threshold)
             Log.d(TAG, "Using low threshold, found ${bestPeaks.size} peaks")
         }
 
         return bestPeaks
     }
 
-    private fun findPeaks(data: DoubleArray, threshold: Double): List<Int> {
+    private fun findPeaksWithThreshold(data: DoubleArray, threshold: Double): List<Int> {
         val peaks = mutableListOf<Int>()
         val minDistance = 5
 
         for (i in 1 until data.size - 1) {
+            // Check if it's a local maximum AND exceeds threshold
             if (data[i] > data[i - 1] &&
                 data[i] > data[i + 1] &&
                 data[i] > threshold
             ) {
+                // Check distance from previous peak
                 if (peaks.isEmpty() || i - peaks.last() >= minDistance) {
                     peaks.add(i)
                 }
@@ -398,6 +443,34 @@ class PlotFragment : Fragment() {
         }
 
         return peaks
+    }
+
+    private fun savitzkyGolayFilter(data: DoubleArray, windowLength: Int, polyorder: Int = 3): DoubleArray {
+        if (data.isEmpty()) return data
+
+        val halfWindow = windowLength / 2
+        val result = DoubleArray(data.size)
+
+        for (i in data.indices) {
+            var sum = 0.0
+            var count = 0
+            for (j in -halfWindow..halfWindow) {
+                val idx = i + j
+                if (idx in data.indices) {
+                    sum += data[idx]
+                    count++
+                }
+            }
+            result[i] = if (count > 0) sum / count else data[i]
+        }
+        return result
+    }
+
+    private fun DoubleArray.std(): Double {
+        if (isEmpty()) return 0.0
+        val mean = average()
+        val variance = map { (it - mean) * (it - mean) }.average()
+        return kotlin.math.sqrt(variance)
     }
 
     private fun updateChartWithFilteredData() {
@@ -652,38 +725,6 @@ class PlotFragment : Fragment() {
         }
     }
 
-    private fun savitzkyGolayFilter(
-        data: DoubleArray,
-        windowLength: Int,
-        polyorder: Int = 3
-    ): DoubleArray {
-        if (data.isEmpty()) return data
-
-        val halfWindow = windowLength / 2
-        val result = DoubleArray(data.size)
-
-        for (i in data.indices) {
-            var sum = 0.0
-            var count = 0
-            for (j in -halfWindow..halfWindow) {
-                val idx = i + j
-                if (idx in data.indices) {
-                    sum += data[idx]
-                    count++
-                }
-            }
-            result[i] = if (count > 0) sum / count else data[i]
-        }
-        return result
-    }
-
-    private fun DoubleArray.std(): Double {
-        if (isEmpty()) return 0.0
-        val mean = average()
-        val variance = map { (it - mean) * (it - mean) }.average()
-        return kotlin.math.sqrt(variance)
-    }
-
     // ==================== SCROLLING FUNCTIONS ====================
 
     private fun scrollData(step: Int) {
@@ -713,7 +754,6 @@ class PlotFragment : Fragment() {
         currentStartIndex = newStart
         currentEndIndex = newEnd
 
-        // Use filtered data update if available
         if (currentSpikeIndices.isNotEmpty() || showFilteredData) {
             updateChartWithFilteredData()
         } else {
