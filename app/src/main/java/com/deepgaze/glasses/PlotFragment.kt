@@ -31,6 +31,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.collections.toDoubleArray
 
 class PlotFragment : Fragment() {
     private var _binding: FragmentPlotBinding? = null
@@ -51,6 +52,7 @@ class PlotFragment : Fragment() {
     private var currentSpikeIndices: List<Int> = emptyList()
     private var currentFilteredData: DoubleArray = doubleArrayOf()
     private var isDetectingBlink = false
+    private var showFilteredData = false // Flag to switch between raw and filtered data
 
     // Viewport tracking for scrolling
     private var currentStartIndex = 0
@@ -243,7 +245,6 @@ class PlotFragment : Fragment() {
     // ==================== BLINK DETECTION FUNCTIONS ====================
 
     private fun detectBlink() {
-        // Check if data is loaded
         if (allDataPoints.isEmpty()) {
             Toast.makeText(requireContext(), "No data to analyze. Load a file first.", Toast.LENGTH_SHORT).show()
             return
@@ -254,7 +255,6 @@ class PlotFragment : Fragment() {
             return
         }
 
-        // Prepare data for detection
         prepareDataForDetection()
 
         if (currentData.isEmpty()) {
@@ -289,10 +289,11 @@ class PlotFragment : Fragment() {
 
                 currentFilteredData = filteredData
                 currentSpikeIndices = spikeIndices
+                showFilteredData = true // Switch to filtered data view
 
                 withContext(Dispatchers.Main) {
-                    // Update chart with blink markers
-                    updateChartWithBlinkDetection()
+                    // Update chart with filtered data and blink markers
+                    updateChartWithFilteredData()
 
                     val message = if (spikeIndices.isNotEmpty()) {
                         "Found ${spikeIndices.size} blinks! 🎉"
@@ -327,6 +328,7 @@ class PlotFragment : Fragment() {
             }
         }
     }
+
     private fun prepareDataForDetection() {
         try {
             if (allDataPoints.isEmpty()) {
@@ -335,7 +337,8 @@ class PlotFragment : Fragment() {
                 return
             }
 
-            val values = allDataPoints.map { it.capacitance.toDouble() }.toDoubleArray()
+            val values = allDataPoints.map { it.capacitance }.toDoubleArray()
+            // ✅ FIX: Convert Long to Double properly
             val timestamps = allDataPoints.map { it.timestamp.toDouble() }.toDoubleArray()
 
             currentData = values
@@ -355,7 +358,6 @@ class PlotFragment : Fragment() {
         val mean = data.average()
         val std = data.std()
 
-        // Try different thresholds to find optimal detection
         val multipliers = listOf(1.5, 2.0, 2.5, 3.0, 3.5)
         var bestPeaks = emptyList<Int>()
         var bestScore = 0
@@ -364,16 +366,13 @@ class PlotFragment : Fragment() {
             val threshold = mean + (multiplier * std)
             val peaks = findPeaks(data, threshold)
 
-            // Score peaks: prefer finding between 3 and 30 peaks with good spacing
             if (peaks.isNotEmpty() && peaks.size in 3..30 && peaks.size > bestScore) {
                 bestPeaks = peaks
                 bestScore = peaks.size
-
                 Log.d(TAG, "Threshold multiplier $multiplier found ${peaks.size} peaks")
             }
         }
 
-        // If no peaks found with standard thresholds, try lower threshold
         if (bestPeaks.isEmpty()) {
             val threshold = mean + (0.5 * std)
             bestPeaks = findPeaks(data, threshold)
@@ -385,15 +384,13 @@ class PlotFragment : Fragment() {
 
     private fun findPeaks(data: DoubleArray, threshold: Double): List<Int> {
         val peaks = mutableListOf<Int>()
-        val minDistance = 5 // Minimum distance between peaks (samples)
+        val minDistance = 5
 
         for (i in 1 until data.size - 1) {
-            // Check if it's a local maximum AND exceeds threshold
             if (data[i] > data[i - 1] &&
                 data[i] > data[i + 1] &&
                 data[i] > threshold
             ) {
-                // Check distance from previous peak
                 if (peaks.isEmpty() || i - peaks.last() >= minDistance) {
                     peaks.add(i)
                 }
@@ -403,13 +400,12 @@ class PlotFragment : Fragment() {
         return peaks
     }
 
-    private fun updateChartWithBlinkDetection() {
+    private fun updateChartWithFilteredData() {
         try {
             if (!isAdded || isDetached || allDataPoints.isEmpty()) {
                 return
             }
 
-            // Ensure we have valid range
             val safeStart = currentStartIndex.coerceIn(0, allDataPoints.size - 1)
             val safeEnd = currentEndIndex.coerceIn(1, allDataPoints.size)
 
@@ -421,12 +417,18 @@ class PlotFragment : Fragment() {
             val blinkEntries = mutableListOf<Entry>()
 
             for (i in safeStart until safeEnd) {
-                val point = allDataPoints[i]
-                entries.add(Entry((i - safeStart).toFloat(), point.capacitance.toFloat()))
+                // Use filtered data if available and showFilteredData is true
+                val value = if (showFilteredData && i < currentFilteredData.size) {
+                    currentFilteredData[i]
+                } else {
+                    allDataPoints[i].capacitance
+                }
+
+                entries.add(Entry((i - safeStart).toFloat(), value.toFloat()))
 
                 // Mark blinks if this index is in the spike list
                 if (currentSpikeIndices.contains(i)) {
-                    blinkEntries.add(Entry((i - safeStart).toFloat(), point.capacitance.toFloat()))
+                    blinkEntries.add(Entry((i - safeStart).toFloat(), value.toFloat()))
                 }
             }
 
@@ -436,9 +438,9 @@ class PlotFragment : Fragment() {
             }
 
             // Create data set for the main data
-            val dataSet = LineDataSet(entries, "Capacitance (pF)").apply {
-                color = Color.BLUE
-                setCircleColor(Color.BLUE)
+            val dataSet = LineDataSet(entries, if (showFilteredData) "Filtered Data" else "Capacitance (pF)").apply {
+                color = if (showFilteredData) Color.parseColor("#FF6B35") else Color.BLUE
+                setCircleColor(if (showFilteredData) Color.parseColor("#FF6B35") else Color.BLUE)
                 lineWidth = 2f
                 circleRadius = 2f
                 setDrawCircleHole(false)
@@ -446,7 +448,7 @@ class PlotFragment : Fragment() {
                 valueTextSize = 8f
                 setDrawValues(false)
                 setDrawFilled(true)
-                fillColor = Color.argb(50, 0, 0, 255)
+                fillColor = if (showFilteredData) Color.argb(50, 255, 107, 53) else Color.argb(50, 0, 0, 255)
                 fillAlpha = 50
                 mode = LineDataSet.Mode.LINEAR
                 setDrawHorizontalHighlightIndicator(false)
@@ -463,7 +465,7 @@ class PlotFragment : Fragment() {
                     circleRadius = 8f
                     setDrawCircleHole(true)
                     circleHoleColor = Color.RED
-                    lineWidth = 0f // No line, just circles
+                    lineWidth = 0f
                     setDrawValues(false)
                     setDrawFilled(false)
                     setDrawHorizontalHighlightIndicator(false)
@@ -471,20 +473,20 @@ class PlotFragment : Fragment() {
                 }
                 lineData.addDataSet(blinkDataSet)
 
-                // Update info with blink count
                 val blinkCount = currentSpikeIndices.count { it in safeStart until safeEnd }
                 val totalBlinkCount = currentSpikeIndices.size
                 binding.textFileInfo.text = """
-                File: ${File(currentFilePath).name}
-                Blinks: $blinkCount (total: $totalBlinkCount)
-            """.trimIndent()
+                    File: ${File(currentFilePath).name}
+                    ${if (showFilteredData) "Filtered Data" else "Raw Data"}
+                    Blinks: $blinkCount (total: $totalBlinkCount) shown in view
+                """.trimIndent()
             } else {
-                // Update info without blinks
                 val infoText = """
-                File: ${File(currentFilePath).name}
-                Points: ${allDataPoints.size}
-                ${if (currentSpikeIndices.isNotEmpty()) "Blinks: ${currentSpikeIndices.size}" else "No blinks detected"}
-            """.trimIndent()
+                    File: ${File(currentFilePath).name}
+                    ${if (showFilteredData) "Filtered Data" else "Raw Data"}
+                    Points: ${allDataPoints.size}
+                    ${if (currentSpikeIndices.isNotEmpty()) "Blinks: ${currentSpikeIndices.size}" else "No blinks detected"}
+                """.trimIndent()
                 binding.textFileInfo.text = infoText
             }
 
@@ -494,7 +496,7 @@ class PlotFragment : Fragment() {
             lineChart.invalidate()
 
         } catch (e: Exception) {
-            Log.e(TAG, "Error updating chart with blink detection", e)
+            Log.e(TAG, "Error updating chart with filtered data", e)
         }
     }
 
@@ -512,6 +514,20 @@ class PlotFragment : Fragment() {
 
         options.add("🎯 Show Only Blinks")
         actions.add { showOnlyBlinks() }
+
+        options.add("🔄 Show Raw Data")
+        actions.add {
+            showFilteredData = false
+            updateChartWithFilteredData()
+            Toast.makeText(requireContext(), "Showing raw data", Toast.LENGTH_SHORT).show()
+        }
+
+        options.add("🔄 Show Filtered Data")
+        actions.add {
+            showFilteredData = true
+            updateChartWithFilteredData()
+            Toast.makeText(requireContext(), "Showing filtered data", Toast.LENGTH_SHORT).show()
+        }
 
         AlertDialog.Builder(requireContext())
             .setTitle("Blink Detection Results")
@@ -544,7 +560,6 @@ class PlotFragment : Fragment() {
             appendLine("Total Blinks: ${blinkData.size}")
             appendLine()
 
-            // Calculate blink intervals if more than 1 blink
             if (blinkData.size > 1) {
                 val intervals = mutableListOf<Double>()
                 for (i in 0 until blinkData.size - 1) {
@@ -555,7 +570,7 @@ class PlotFragment : Fragment() {
                 val avgInterval = intervals.average()
                 val minInterval = intervals.minOrNull() ?: 0.0
                 val maxInterval = intervals.maxOrNull() ?: 0.0
-                val blinkRate = if (avgInterval > 0) 60000.0 / avgInterval else 0.0 // blinks per minute
+                val blinkRate = if (avgInterval > 0) 60000.0 / avgInterval else 0.0
 
                 appendLine("Interval Statistics:")
                 appendLine("  Average: ${String.format("%.1f", avgInterval)} ms")
@@ -565,7 +580,6 @@ class PlotFragment : Fragment() {
                 appendLine()
             }
 
-            // Show first few and last few blink times
             if (blinkData.size > 0) {
                 appendLine("First 5 blinks:")
                 blinkData.take(5).forEachIndexed { index, point ->
@@ -615,14 +629,13 @@ class PlotFragment : Fragment() {
             return
         }
 
-        // Zoom to the first blink
         val firstBlink = currentSpikeIndices.firstOrNull() ?: return
         val start = (firstBlink - 50).coerceAtLeast(0)
         val end = (firstBlink + 100).coerceAtMost(allDataPoints.size)
 
         currentStartIndex = start
         currentEndIndex = end
-        updateChartWithBlinkDetection()
+        updateChartWithFilteredData()
         updateScrollButtons()
     }
 
@@ -700,9 +713,9 @@ class PlotFragment : Fragment() {
         currentStartIndex = newStart
         currentEndIndex = newEnd
 
-        // Use blink detection update if available, otherwise regular update
-        if (currentSpikeIndices.isNotEmpty()) {
-            updateChartWithBlinkDetection()
+        // Use filtered data update if available
+        if (currentSpikeIndices.isNotEmpty() || showFilteredData) {
+            updateChartWithFilteredData()
         } else {
             updateChartWithRange(currentStartIndex, currentEndIndex)
         }
@@ -765,14 +778,6 @@ class PlotFragment : Fragment() {
             if (safeEnd == allDataPoints.size && allDataPoints.isNotEmpty()) {
                 val lastPoint = allDataPoints.last()
                 binding.textLatestValue.text = "Latest: ${lastPoint.capacitance} pF"
-            }
-
-            dataManager?.let { dm ->
-                try {
-                    val stats = dm.getPlotStatistics()
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error getting statistics", e)
-                }
             }
 
             lineChart.invalidate()
@@ -993,6 +998,11 @@ class PlotFragment : Fragment() {
                 return
             }
 
+            // Reset filtered data state
+            showFilteredData = false
+            currentSpikeIndices = emptyList()
+            currentFilteredData = doubleArrayOf()
+
             val allPoints = loadAllDataFromFile(file)
 
             if (allPoints.isNotEmpty()) {
@@ -1002,19 +1012,13 @@ class PlotFragment : Fragment() {
 
                 Log.d(TAG, "Loaded ${allDataPoints.size} total data points")
 
-                // Reset blink detection data
-                currentSpikeIndices = emptyList()
-                currentData = doubleArrayOf()
-                currentFilteredData = doubleArrayOf()
-
-                // ✅ ENABLE blink detection button
                 binding.buttonDetectBlink.isEnabled = true
 
                 val displayText = """
-                File: ${file.name}
-                Total Points: ${allDataPoints.size}
-                Size: ${formatFileSize(file.length())}
-            """.trimIndent()
+                    File: ${file.name}
+                    Total Points: ${allDataPoints.size}
+                    Size: ${formatFileSize(file.length())}
+                """.trimIndent()
                 binding.textFileInfo.text = displayText
 
                 currentStartIndex = 0
@@ -1048,7 +1052,11 @@ class PlotFragment : Fragment() {
     }
 
     private fun updateChart() {
-        updateChartWithRange(currentStartIndex, currentEndIndex)
+        if (showFilteredData && currentFilteredData.isNotEmpty()) {
+            updateChartWithFilteredData()
+        } else {
+            updateChartWithRange(currentStartIndex, currentEndIndex)
+        }
     }
 
     private fun showEmptyState() {
@@ -1057,6 +1065,7 @@ class PlotFragment : Fragment() {
             currentSpikeIndices = emptyList()
             currentData = doubleArrayOf()
             currentFilteredData = doubleArrayOf()
+            showFilteredData = false
 
             val emptyData = LineData()
             lineChart.data = emptyData
@@ -1081,6 +1090,7 @@ class PlotFragment : Fragment() {
             currentSpikeIndices = emptyList()
             currentData = doubleArrayOf()
             currentFilteredData = doubleArrayOf()
+            showFilteredData = false
             dataManager?.clearPlotData()
             showEmptyState()
             binding.buttonDetectBlink.isEnabled = false
