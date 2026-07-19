@@ -1,23 +1,19 @@
 package com.deepgaze.glasses
 
-import kotlin.math.PI
 import kotlin.math.abs
-import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.sin
 import kotlin.math.sqrt
-import kotlin.math.tan
 
 /**
- * A class to detect and correct noisy step periods in time series data.
+ * A step noise corrector with highly selective detection to avoid false positives.
  * This version PRESERVES THE ORIGINAL DATA ORDER.
  */
 class StepNoiseCorrector(
     private val window: Int = 30,
-    private val requiredStable: Int = 30,
-    private val maxIterations: Int = 20,
-    private val noiseThreshold: Double = 5.0,  // Increased from 3.0 to 5.0 (less sensitive)
+    private val requiredStable: Int = 50,  // Increased from 30 to 50 (needs more stable points)
+    private val maxIterations: Int = 10,
+    private val noiseThreshold: Double = 6.0,  // Increased from 4.0 to 6.0 (less sensitive)
     private val lookAhead: Int = 500,
     private val filterNoise: Boolean = false,
     private val cutoffFreq: Double = 0.1,
@@ -78,6 +74,8 @@ class StepNoiseCorrector(
 
         var dataToProcess = data.copyOf()
 
+        dataToProcess = correctStepNoise(dataToProcess)
+
         if (medianFilter) {
             println("Applying median filter (kernel=$medianKernel)...")
             dataToProcess = applyMedianFilter(dataToProcess, medianKernel)
@@ -88,10 +86,11 @@ class StepNoiseCorrector(
             dataToProcess = butterLowpassFilter(dataToProcess, cutoffFreq, filterOrder)
         }
 
+        correctedData = dataToProcess
+
         filteredData = if (medianFilter || filterNoise) dataToProcess.copyOf() else null
 
         println("Correcting step noise...")
-        correctedData = correctStepNoise(dataToProcess)
 
         if (detrend) {
             println("Detrending corrected data using $detrendMethod method...")
@@ -146,8 +145,7 @@ class StepNoiseCorrector(
     }
 
     /**
-     * Correct step noise while PRESERVING THE ORIGINAL ORDER.
-     * Uses findMostProminentStep with adjusted sensitivity.
+     * Correct step noise with highly selective detection.
      */
     private fun correctStepNoise(data: DoubleArray): DoubleArray {
         val result = data.copyOf()
@@ -165,26 +163,32 @@ class StepNoiseCorrector(
                 val (startIdx, endIdx, preMean, postMean) = stepInfo
                 val stepAmplitude = postMean - preMean
 
-                // ✅ Only correct if the step is significant enough
+                // ✅ STRICT REQUIREMENTS for step correction
+                // 1. Amplitude must be large enough (at least 2.0)
+                // 2. Duration must be long enough (at least 20 samples)
+                // 3. Step must be at least 3x noisier than surrounding area
                 val stepRegion = result.slice(startIdx until endIdx)
                 val preStart = max(0, startIdx - 50)
                 val preRegion = result.slice(preStart until startIdx)
                 val preStd = if (preRegion.isNotEmpty()) preRegion.std() else 1.0
+                val stepStd = if (stepRegion.isNotEmpty()) stepRegion.std() else 1.0
 
-                // ✅ REQUIREMENTS:
-                // 1. Step must be at least 3x noisier than pre-region
-                // 2. Step amplitude must be at least 2x the noise
-                val stepStd = stepRegion.std()
-                val isSignificant = stepStd > preStd * 3.0 && abs(stepAmplitude) > preStd * 2.0
+                val isSignificant = abs(stepAmplitude) > 2.0 &&  // Large enough amplitude
+                        (endIdx - startIdx) > 20 &&   // Long enough duration
+                        stepStd > preStd * 3.0        // Noisier than surrounding
 
                 if (isSignificant) {
-                    // Correct the step IN PLACE
+                    // Apply correction
+                    val correction = -stepAmplitude
+
+                    // Fill the step region with pre-mean
                     for (i in startIdx until endIdx) {
                         result[i] = preMean
                     }
 
+                    // Apply correction to post-step data
                     for (i in endIdx until result.size) {
-                        result[i] = result[i] - stepAmplitude
+                        result[i] = result[i] + correction
                     }
 
                     stepPeriods.add(
@@ -213,12 +217,12 @@ class StepNoiseCorrector(
     }
 
     /**
-     * Find the most prominent step in the data.
-     * Returns null if no significant step is found.
+     * Find the most prominent step with strict criteria.
      */
     private fun findMostProminentStep(data: DoubleArray): StepInfo? {
-        if (data.size < 10) return null
+        if (data.size < 50) return null  // Need enough data
 
+        // Calculate rolling standard deviation
         val rollingStd = calculateRollingStd(data, window)
         val globalMedian = rollingStd.median()
         val threshold = globalMedian * noiseThreshold
@@ -228,17 +232,17 @@ class StepNoiseCorrector(
         var bestPreMean = 0.0
         var bestPostMean = 0.0
         var bestScore = 0.0
-        var bestStepStd = 0.0
 
-        var i = 0
-        while (i < data.size - window) {
+        var i = window / 2
+        while (i < data.size - window / 2) {
             if (rollingStd[i] > threshold) {
                 val start = i
 
+                // Find where the noise ends - require more stable points
                 var end = start
                 var stableCount = 0
                 for (j in start until min(data.size, start + lookAhead)) {
-                    if (rollingStd[j] < threshold * 0.5) {
+                    if (rollingStd[j] < threshold * 0.3) {  // More strict: 0.3 instead of 0.5
                         stableCount++
                         if (stableCount >= requiredStable) {
                             end = j - requiredStable + 1
@@ -250,28 +254,35 @@ class StepNoiseCorrector(
                     }
                 }
 
-                if (end > start + window) {
-                    val preStart = max(0, start - 50)
-                    val preMean = data.slice(preStart until start).average()
-                    val preStd = data.slice(preStart until start).std()
+                // Require longer step region
+                if (end > start + 30) {
+                    // Calculate pre-step mean
+                    val preStart = max(0, start - 30)
+                    val preWindow = data.slice(preStart until start)
+                    val preMean = if (preWindow.isNotEmpty()) preWindow.average() else data[start]
 
-                    val postEnd = min(data.size, end + 50)
-                    val postMean = data.slice(end until postEnd).average()
+                    // Calculate post-step mean
+                    val postEnd = min(data.size, end + 30)
+                    val postWindow = data.slice(end until postEnd)
+                    val postMean = if (postWindow.isNotEmpty()) postWindow.average() else data.last()
 
                     val stepAmplitude = abs(postMean - preMean)
                     val stepDuration = end - start
-                    val stepStd = data.slice(start until end).std()
-                    val stepRange = data.slice(start until end).maxOrNull()!! - data.slice(start until end).minOrNull()!!
-                    val preRange = if (preStart < start) data.slice(preStart until start).maxOrNull()!! - data.slice(preStart until start).minOrNull()!! else 0.0
 
-                    // ✅ STRICTER SCORING: Only consider significant steps
-                    val isSignificant = stepStd > preStd * 3.0 &&
-                            stepAmplitude > preStd * 2.0 &&
-                            stepRange > preRange * 2.5
+                    // Calculate noise levels
+                    val stepWindow = data.slice(start until end)
+                    val stepStd = if (stepWindow.isNotEmpty()) stepWindow.std() else 0.0
+                    val preStd = if (preWindow.isNotEmpty()) preWindow.std() else 0.0
 
-                    if (isSignificant) {
-                        // Score: larger amplitude, duration, and step range = higher score
-                        val score = stepAmplitude * stepDuration * stepRange / (stepStd + 1.0)
+                    // ✅ STRICT SCORING CRITERIA
+                    val isValidStep = stepAmplitude > 2.0 &&           // Large amplitude
+                            stepDuration > 20 &&              // Long duration
+                            stepStd > preStd * 3.0 &&        // Much noisier
+                            stepAmplitude > preStd * 2.0    // Amplitude > 2x noise
+
+                    if (isValidStep) {
+                        // Score based on amplitude and duration
+                        val score = stepAmplitude * stepDuration / (stepStd + 1.0)
 
                         if (score > bestScore) {
                             bestScore = score
@@ -279,7 +290,6 @@ class StepNoiseCorrector(
                             bestEnd = end
                             bestPreMean = preMean
                             bestPostMean = postMean
-                            bestStepStd = stepStd
                         }
                     }
                 }
@@ -291,7 +301,7 @@ class StepNoiseCorrector(
         }
 
         return if (bestStart >= 0 && bestEnd > bestStart) {
-            println("   Found step at $bestStart-$bestEnd (score: ${String.format("%.2f", bestScore)}, std: ${String.format("%.2f", bestStepStd)})")
+            println("   Found valid step at $bestStart-$bestEnd (amplitude: ${String.format("%.2f", abs(bestPostMean - bestPreMean))})")
             StepInfo(bestStart, bestEnd, bestPreMean, bestPostMean)
         } else {
             null
@@ -308,143 +318,14 @@ class StepNoiseCorrector(
     // ==================== HELPER FUNCTIONS ====================
 
     private fun butterLowpassFilter(data: DoubleArray, cutoff: Double, order: Int = 4): DoubleArray {
-        val nyquist = 0.5
-        val normalizedCutoff = min(cutoff / nyquist, 0.99)
+        val result = data.copyOf()
+        val alpha = 1.0 / (1.0 + (1.0 / (2.0 * Math.PI * cutoff)))
 
-        val analogCoeffs = designAnalogButterworth(order)
-        val (b, a) = bilinearTransform(analogCoeffs, normalizedCutoff)
-
-        return filtfilt(data, b, a)
-    }
-
-    private fun designAnalogButterworth(order: Int): Pair<DoubleArray, DoubleArray> {
-        val poles = Array(order) { k ->
-            val angle = PI / 2 + (2 * k + 1) * PI / (2 * order)
-            org.apache.commons.math3.complex.Complex(cos(angle), sin(angle))
-        }
-
-        val denomRe = DoubleArray(order + 1)
-        denomRe[0] = 1.0
-
-        for (pole in poles) {
-            val newDenom = DoubleArray(order + 1)
-            for (i in 0..order) {
-                if (denomRe[i] != 0.0) {
-                    if (i + 1 <= order) {
-                        newDenom[i + 1] += denomRe[i]
-                    }
-                    newDenom[i] += denomRe[i] * (-pole.real)
-                }
-            }
-            System.arraycopy(newDenom, 0, denomRe, 0, order + 1)
-        }
-
-        val num = DoubleArray(order + 1)
-        num[0] = 1.0
-
-        return Pair(num, denomRe)
-    }
-
-    private fun bilinearTransform(
-        analogCoeffs: Pair<DoubleArray, DoubleArray>,
-        cutoff: Double
-    ): Pair<DoubleArray, DoubleArray> {
-        val (b, a) = analogCoeffs
-        val order = a.size - 1
-
-        val T = 1.0
-        val wc = 2.0 / T * tan(PI * cutoff / 2.0)
-
-        val bDigital = DoubleArray(order + 1)
-        val aDigital = DoubleArray(order + 1)
-
-        if (order == 1) {
-            val c = wc / (wc + 2.0 / T)
-            bDigital[0] = c
-            bDigital[1] = c
-            aDigital[0] = 1.0
-            aDigital[1] = -(1.0 - 2.0 / T / (wc + 2.0 / T))
-        } else {
-            var bTotal = doubleArrayOf(1.0)
-            var aTotal = doubleArrayOf(1.0)
-
-            val sections = order / 2
-            for (k in 0 until sections) {
-                val angle = PI / 2 + (2 * k + 1) * PI / (2 * order)
-                val poleReal = wc * cos(angle)
-                val poleImag = wc * sin(angle)
-
-                val wc2 = wc * wc
-                val denominator = wc2 + 2.0 * wc / T + 4.0 / (T * T)
-
-                val bSection = DoubleArray(3)
-                val aSection = DoubleArray(3)
-
-                val k0 = wc2 / denominator
-                val k1 = 2.0 * k0
-                bSection[0] = k0
-                bSection[1] = k1
-                bSection[2] = k0
-
-                val k2 = (2.0 * wc2 - 8.0 / (T * T)) / denominator
-                val k3 = (wc2 - 2.0 * wc / T + 4.0 / (T * T)) / denominator
-                aSection[0] = 1.0
-                aSection[1] = k2
-                aSection[2] = k3
-
-                bTotal = convolve(bTotal, bSection)
-                aTotal = convolve(aTotal, aSection)
-            }
-
-            for (i in 0..min(order, bTotal.size - 1)) {
-                bDigital[i] = bTotal[i]
-            }
-            for (i in 0..min(order, aTotal.size - 1)) {
-                aDigital[i] = aTotal[i]
-            }
-        }
-
-        val a0 = aDigital[0]
-        for (i in bDigital.indices) {
-            bDigital[i] = bDigital[i] / a0
-        }
-        for (i in aDigital.indices) {
-            aDigital[i] = aDigital[i] / a0
-        }
-
-        return Pair(bDigital, aDigital)
-    }
-
-    private fun convolve(x: DoubleArray, y: DoubleArray): DoubleArray {
-        val result = DoubleArray(x.size + y.size - 1)
-        for (i in x.indices) {
-            for (j in y.indices) {
-                result[i + j] += x[i] * y[j]
-            }
-        }
-        return result
-    }
-
-    private fun filtfilt(data: DoubleArray, b: DoubleArray, a: DoubleArray): DoubleArray {
-        val forward = filter(data, b, a)
-        val reversed = forward.reversedArray()
-        val backward = filter(reversed, b, a)
-        return backward.reversedArray()
-    }
-
-    private fun filter(data: DoubleArray, b: DoubleArray, a: DoubleArray): DoubleArray {
-        val result = DoubleArray(data.size)
-        val order = b.size - 1
-
+        var previous = data[0]
         for (i in data.indices) {
-            var sum = 0.0
-            for (k in 0..min(i, order)) {
-                sum += b[k] * data[i - k]
-            }
-            for (k in 1..min(i, order)) {
-                sum -= a[k] * result[i - k]
-            }
-            result[i] = sum / a[0]
+            val filtered = alpha * data[i] + (1 - alpha) * previous
+            result[i] = filtered
+            previous = filtered
         }
 
         return result
