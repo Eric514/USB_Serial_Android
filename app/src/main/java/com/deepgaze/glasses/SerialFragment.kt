@@ -40,7 +40,6 @@ import com.github.mikephil.charting.data.LineData
 import android.text.method.ScrollingMovementMethod
 import androidx.core.graphics.toColorInt
 
-
 class SerialFragment : Fragment() {
     private var _binding: FragmentSerialBinding? = null
     private val binding get() = _binding!!
@@ -60,8 +59,6 @@ class SerialFragment : Fragment() {
     private val dateFormat = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault())
 
     private val dataBuffer = StringBuilder()
-    private var isProcessingQueue = false
-    private var lastDataTime = 0L
     private val TIMEOUT_MS = 100L
     private val MIN_MESSAGE_LENGTH = 2
     private val MAX_BUFFER_SIZE = 1024 * 1024
@@ -116,9 +113,6 @@ class SerialFragment : Fragment() {
     //Data Save to Data Manager
     private lateinit var dataManager: DataManager
     private var isSavingEnabled = true
-    private var currentDataBuffer = StringBuilder()
-    private var lastSaveTime = 0L
-    private val SAVE_INTERVAL_MS = 5000L
 
     // ==================== PERFORMANCE OPTIMIZATIONS FOR SAMSUNG ====================
     // Batch UI updates to prevent UI thread congestion
@@ -1042,8 +1036,6 @@ class SerialFragment : Fragment() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.d(TAG, "onCreate")
-
-//        dataManager = DataManager(requireContext())
 
         arguments?.let {
             patientId = it.getString("patientId", "")
