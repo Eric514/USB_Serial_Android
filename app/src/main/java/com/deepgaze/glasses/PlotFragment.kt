@@ -282,7 +282,7 @@ class PlotFragment : Fragment() {
                             medianFilter = true,
                             medianKernel = 5,
                             filterNoise = true,
-                            cutoffFreq = 0.1,
+                            cutoffFreq = 0.06,
                             filterOrder = 4,
                             window = 30,
                             requiredStable = 30,
