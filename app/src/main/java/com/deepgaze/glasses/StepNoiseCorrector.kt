@@ -11,13 +11,13 @@ import kotlin.math.tan
 
 /**
  * A class to detect and correct noisy step periods in time series data.
- * Modified to work with DoubleArrays instead of DataFrames.
+ * This version PRESERVES THE ORIGINAL DATA ORDER.
  */
 class StepNoiseCorrector(
     private val window: Int = 30,
     private val requiredStable: Int = 30,
     private val maxIterations: Int = 20,
-    private val noiseThreshold: Double = 3.0,
+    private val noiseThreshold: Double = 5.0,  // Increased from 3.0 to 5.0 (less sensitive)
     private val lookAhead: Int = 500,
     private val filterNoise: Boolean = false,
     private val cutoffFreq: Double = 0.1,
@@ -69,9 +69,244 @@ class StepNoiseCorrector(
     private var trend: DoubleArray? = null
     private var timestamps: DoubleArray? = null
 
+    fun process(
+        data: DoubleArray,
+        timestamps: DoubleArray? = null
+    ): ProcessedResult {
+        this.originalData = data.copyOf()
+        this.timestamps = timestamps?.copyOf() ?: DoubleArray(data.size) { it.toDouble() }
+
+        var dataToProcess = data.copyOf()
+
+        if (medianFilter) {
+            println("Applying median filter (kernel=$medianKernel)...")
+            dataToProcess = applyMedianFilter(dataToProcess, medianKernel)
+        }
+
+        if (filterNoise) {
+            println("Applying Butterworth low-pass filter (cutoff=$cutoffFreq, order=$filterOrder)...")
+            dataToProcess = butterLowpassFilter(dataToProcess, cutoffFreq, filterOrder)
+        }
+
+        filteredData = if (medianFilter || filterNoise) dataToProcess.copyOf() else null
+
+        println("Correcting step noise...")
+        correctedData = correctStepNoise(dataToProcess)
+
+        if (detrend) {
+            println("Detrending corrected data using $detrendMethod method...")
+            val (detrended, trendData) = detrendData(correctedData!!)
+            detrendedData = detrended
+            trend = trendData
+        } else {
+            detrendedData = null
+            trend = null
+        }
+
+        val finalData = if (detrendedData != null) {
+            detrendedData!!
+        } else {
+            correctedData!!
+        }
+
+        val stats = Statistics(
+            numSteps = stepPeriods.size,
+            originalMean = originalData!!.average(),
+            originalStd = originalData!!.std(),
+            correctedMean = correctedData!!.average(),
+            correctedStd = correctedData!!.std(),
+            improvement = originalData!!.average() - correctedData!!.average(),
+            filteredMean = filteredData?.average(),
+            filteredStd = filteredData?.let { it.std() },
+            detrendedMean = detrendedData?.average(),
+            detrendedStd = detrendedData?.let { it.std() }
+        )
+
+        println()
+        println("✅ Done! Processed ${data.size} points")
+        println("   Steps detected: ${stepPeriods.size}")
+        println("   Original mean: ${originalData!!.average()}")
+        println("   Corrected mean: ${correctedData!!.average()}")
+        if (detrendedData != null) {
+            println("   Detrended mean: ${detrendedData!!.average()}")
+            println("   Detrended std: ${detrendedData!!.std()}")
+        }
+
+        return ProcessedResult(
+            originalData = originalData!!,
+            timestamps = this.timestamps!!,
+            filteredData = filteredData,
+            correctedData = correctedData!!,
+            detrendedData = detrendedData,
+            trend = trend,
+            finalData = finalData,
+            stepPeriods = stepPeriods.toList(),
+            stats = stats
+        )
+    }
+
     /**
-     * Proper Butterworth low-pass filter implementation.
+     * Correct step noise while PRESERVING THE ORIGINAL ORDER.
+     * Uses findMostProminentStep with adjusted sensitivity.
      */
+    private fun correctStepNoise(data: DoubleArray): DoubleArray {
+        val result = data.copyOf()
+        stepPeriods.clear()
+
+        var iteration = 0
+        var foundStep = true
+
+        while (foundStep && iteration < maxIterations) {
+            foundStep = false
+
+            val stepInfo = findMostProminentStep(result)
+
+            if (stepInfo != null) {
+                val (startIdx, endIdx, preMean, postMean) = stepInfo
+                val stepAmplitude = postMean - preMean
+
+                // ✅ Only correct if the step is significant enough
+                val stepRegion = result.slice(startIdx until endIdx)
+                val preStart = max(0, startIdx - 50)
+                val preRegion = result.slice(preStart until startIdx)
+                val preStd = if (preRegion.isNotEmpty()) preRegion.std() else 1.0
+
+                // ✅ REQUIREMENTS:
+                // 1. Step must be at least 3x noisier than pre-region
+                // 2. Step amplitude must be at least 2x the noise
+                val stepStd = stepRegion.std()
+                val isSignificant = stepStd > preStd * 3.0 && abs(stepAmplitude) > preStd * 2.0
+
+                if (isSignificant) {
+                    // Correct the step IN PLACE
+                    for (i in startIdx until endIdx) {
+                        result[i] = preMean
+                    }
+
+                    for (i in endIdx until result.size) {
+                        result[i] = result[i] - stepAmplitude
+                    }
+
+                    stepPeriods.add(
+                        StepPeriod(
+                            start = startIdx,
+                            end = endIdx,
+                            preMean = preMean,
+                            postMean = postMean,
+                            stepAmplitude = stepAmplitude,
+                            duration = endIdx - startIdx
+                        )
+                    )
+
+                    foundStep = true
+                    iteration++
+                    println("   Corrected step ${iteration} at indices $startIdx-$endIdx (amplitude: ${String.format("%.2f", stepAmplitude)})")
+                } else {
+                    println("   Skipping step at $startIdx-$endIdx (not significant enough)")
+                    // Mark as processed to avoid rechecking
+                    foundStep = false
+                }
+            }
+        }
+
+        return result
+    }
+
+    /**
+     * Find the most prominent step in the data.
+     * Returns null if no significant step is found.
+     */
+    private fun findMostProminentStep(data: DoubleArray): StepInfo? {
+        if (data.size < 10) return null
+
+        val rollingStd = calculateRollingStd(data, window)
+        val globalMedian = rollingStd.median()
+        val threshold = globalMedian * noiseThreshold
+
+        var bestStart = -1
+        var bestEnd = -1
+        var bestPreMean = 0.0
+        var bestPostMean = 0.0
+        var bestScore = 0.0
+        var bestStepStd = 0.0
+
+        var i = 0
+        while (i < data.size - window) {
+            if (rollingStd[i] > threshold) {
+                val start = i
+
+                var end = start
+                var stableCount = 0
+                for (j in start until min(data.size, start + lookAhead)) {
+                    if (rollingStd[j] < threshold * 0.5) {
+                        stableCount++
+                        if (stableCount >= requiredStable) {
+                            end = j - requiredStable + 1
+                            break
+                        }
+                    } else {
+                        stableCount = 0
+                        end = j
+                    }
+                }
+
+                if (end > start + window) {
+                    val preStart = max(0, start - 50)
+                    val preMean = data.slice(preStart until start).average()
+                    val preStd = data.slice(preStart until start).std()
+
+                    val postEnd = min(data.size, end + 50)
+                    val postMean = data.slice(end until postEnd).average()
+
+                    val stepAmplitude = abs(postMean - preMean)
+                    val stepDuration = end - start
+                    val stepStd = data.slice(start until end).std()
+                    val stepRange = data.slice(start until end).maxOrNull()!! - data.slice(start until end).minOrNull()!!
+                    val preRange = if (preStart < start) data.slice(preStart until start).maxOrNull()!! - data.slice(preStart until start).minOrNull()!! else 0.0
+
+                    // ✅ STRICTER SCORING: Only consider significant steps
+                    val isSignificant = stepStd > preStd * 3.0 &&
+                            stepAmplitude > preStd * 2.0 &&
+                            stepRange > preRange * 2.5
+
+                    if (isSignificant) {
+                        // Score: larger amplitude, duration, and step range = higher score
+                        val score = stepAmplitude * stepDuration * stepRange / (stepStd + 1.0)
+
+                        if (score > bestScore) {
+                            bestScore = score
+                            bestStart = start
+                            bestEnd = end
+                            bestPreMean = preMean
+                            bestPostMean = postMean
+                            bestStepStd = stepStd
+                        }
+                    }
+                }
+
+                i = end + 1
+            } else {
+                i++
+            }
+        }
+
+        return if (bestStart >= 0 && bestEnd > bestStart) {
+            println("   Found step at $bestStart-$bestEnd (score: ${String.format("%.2f", bestScore)}, std: ${String.format("%.2f", bestStepStd)})")
+            StepInfo(bestStart, bestEnd, bestPreMean, bestPostMean)
+        } else {
+            null
+        }
+    }
+
+    data class StepInfo(
+        val start: Int,
+        val end: Int,
+        val preMean: Double,
+        val postMean: Double
+    )
+
+    // ==================== HELPER FUNCTIONS ====================
+
     private fun butterLowpassFilter(data: DoubleArray, cutoff: Double, order: Int = 4): DoubleArray {
         val nyquist = 0.5
         val normalizedCutoff = min(cutoff / nyquist, 0.99)
@@ -365,222 +600,6 @@ class StepNoiseCorrector(
         return result
     }
 
-    private fun findPeaks(data: List<Double>, prominence: Double): List<Int> {
-        val peaks = mutableListOf<Int>()
-        for (i in 1 until data.size - 1) {
-            if (data[i] > data[i - 1] && data[i] > data[i + 1] && data[i] > prominence) {
-                peaks.add(i)
-            }
-        }
-        return peaks
-    }
-
-    private fun detectNoisyStep(data: DoubleArray, startIdx: Int): Pair<Int, Boolean> {
-        val n = data.size
-
-        val preStart = max(0, startIdx - 100)
-        val preRegion = data.slice(preStart until startIdx)
-        val preStd = if (preRegion.isNotEmpty()) preRegion.std()
-        else data.slice(0 until 100).std()
-
-        val rollingStd = calculateRollingStd(data, window)
-
-        var endIdx = startIdx
-        var stableCount = 0
-        val maxLookAhead = min(n, startIdx + lookAhead)
-
-        for (i in startIdx until maxLookAhead) {
-            if (rollingStd[i] < preStd * 1.5) {
-                stableCount++
-                if (stableCount >= requiredStable) {
-                    endIdx = i - requiredStable + 1
-                    break
-                }
-            } else {
-                stableCount = 0
-                endIdx = i
-            }
-        }
-
-        if (endIdx == startIdx) {
-            endIdx = min(n - 1, startIdx + 200)
-        }
-
-        val stepRegion = data.slice(startIdx until endIdx)
-        if (stepRegion.size > window) {
-            val stepStd = stepRegion.std()
-            val stepRange = stepRegion.maxOrNull()!! - stepRegion.minOrNull()!!
-            val preRange = if (preRegion.isNotEmpty()) preRegion.maxOrNull()!! - preRegion.minOrNull()!! else 0.0
-
-            val peaks = findPeaks(stepRegion, stepStd / 3)
-
-            val isNoisy = stepStd > preStd * 2.5 &&
-                    stepRange > preRange * 2 &&
-                    peaks.size > 2
-
-            if (isNoisy) {
-                return Pair(endIdx, true)
-            }
-        }
-
-        return Pair(startIdx, false)
-    }
-
-    private fun findNextStep(data: DoubleArray): Pair<Int?, Int?> {
-        val n = data.size
-        val rollingStd = calculateRollingStd(data, window)
-
-        val globalNoise = rollingStd.median()
-        val stdThreshold = globalNoise * noiseThreshold
-
-        for (i in 0 until n - window) {
-            if (rollingStd[i] > stdThreshold) {
-                val (endIdx, isNoisy) = detectNoisyStep(data, i)
-                if (isNoisy && endIdx - i > window) {
-                    return Pair(i, endIdx)
-                }
-            }
-        }
-        return Pair(null, null)
-    }
-
-    private fun correctStepNoise(data: DoubleArray): DoubleArray {
-        val dataCorrected = data.copyOf()
-        stepPeriods.clear()
-
-        var iteration = 0
-        while (iteration < maxIterations) {
-            val (startIdx, endIdx) = findNextStep(dataCorrected)
-
-            if (startIdx == null || endIdx == null) {
-                break
-            }
-
-            val preStart = max(0, startIdx - 50)
-            val preMean = dataCorrected.slice(preStart until startIdx).average()
-
-            val postEnd = min(dataCorrected.size, endIdx + 50)
-            val postMean = if (endIdx < dataCorrected.size - 1) {
-                dataCorrected.slice(endIdx until postEnd).average()
-            } else {
-                dataCorrected.last()
-            }
-            val stepAmplitude = postMean - preMean
-
-            for (i in startIdx until endIdx) {
-                dataCorrected[i] = preMean
-            }
-            for (i in endIdx until dataCorrected.size) {
-                dataCorrected[i] = dataCorrected[i] - stepAmplitude
-            }
-
-            stepPeriods.add(
-                StepPeriod(
-                    start = startIdx,
-                    end = endIdx,
-                    preMean = preMean,
-                    postMean = postMean,
-                    stepAmplitude = stepAmplitude,
-                    duration = endIdx - startIdx
-                )
-            )
-
-            iteration++
-        }
-
-        return dataCorrected
-    }
-
-    /**
-     * Process the data using DoubleArray inputs.
-     */
-    fun process(
-        data: DoubleArray,
-        timestamps: DoubleArray? = null
-    ): ProcessedResult {
-        this.originalData = data.copyOf()
-        this.timestamps = timestamps?.copyOf() ?: DoubleArray(data.size) { it.toDouble() }
-
-        // Step 1: Apply filters if requested
-        var dataToProcess = data.copyOf()
-
-        // Median filter
-        if (medianFilter) {
-            println("Applying median filter (kernel=$medianKernel)...")
-            dataToProcess = applyMedianFilter(dataToProcess, medianKernel)
-        }
-
-        // Low-pass filter
-        if (filterNoise) {
-            println("Applying Butterworth low-pass filter (cutoff=$cutoffFreq, order=$filterOrder)...")
-            dataToProcess = butterLowpassFilter(dataToProcess, cutoffFreq, filterOrder)
-        }
-
-        filteredData = if (medianFilter || filterNoise) dataToProcess.copyOf() else null
-
-        // Step 2: Correct step noise
-        println("Correcting step noise...")
-        correctedData = correctStepNoise(dataToProcess)
-
-        // Step 3: Detrend the corrected data if requested
-        if (detrend) {
-            println("Detrending corrected data using $detrendMethod method...")
-            val (detrended, trendData) = detrendData(correctedData!!)
-            detrendedData = detrended
-            trend = trendData
-        } else {
-            // If detrend is false, use corrected data as detrended data
-            detrendedData = correctedData?.copyOf()
-            trend = null
-        }
-
-        // Step 4: Final data - always use detrendedData if available, otherwise correctedData
-        val finalData = if (detrendedData != null) {
-            detrendedData!!
-        } else if (correctedData != null) {
-            correctedData!!
-        } else {
-            data.copyOf()
-        }
-
-        // Calculate statistics
-        val stats = Statistics(
-            numSteps = stepPeriods.size,
-            originalMean = originalData!!.average(),
-            originalStd = originalData!!.std(),
-            correctedMean = correctedData!!.average(),
-            correctedStd = correctedData!!.std(),
-            improvement = originalData!!.average() - correctedData!!.average(),
-            filteredMean = filteredData?.average(),
-            filteredStd = filteredData?.let { it.std() },
-            detrendedMean = detrendedData?.average(),
-            detrendedStd = detrendedData?.let { it.std() }
-        )
-
-        // Print summary
-        println()
-        println("✅ Done! Processed ${data.size} points")
-        println("   Steps detected: ${stepPeriods.size}")
-        println("   Original mean: ${originalData!!.average()}")
-        println("   Corrected mean: ${correctedData!!.average()}")
-        if (detrendedData != null) {
-            println("   Detrended mean: ${detrendedData!!.average()}")
-            println("   Detrended std: ${detrendedData!!.std()}")
-        }
-
-        return ProcessedResult(
-            originalData = originalData!!,
-            timestamps = this.timestamps!!,
-            filteredData = filteredData,
-            correctedData = correctedData!!,
-            detrendedData = detrendedData,
-            trend = trend,
-            finalData = finalData,
-            stepPeriods = stepPeriods.toList(),
-            stats = stats
-        )
-    }
-
     private fun DoubleArray.median(): Double {
         if (isEmpty()) return 0.0
         val sorted = sorted()
@@ -603,77 +622,5 @@ class StepNoiseCorrector(
         val mean = average()
         val variance = map { (it - mean) * (it - mean) }.average()
         return sqrt(variance)
-    }
-
-    private fun findPeaks(data: DoubleArray, threshold: Double): List<Int> {
-        if (data.size < 3) return emptyList()
-
-        val peaks = mutableListOf<Int>()
-        for (i in 1 until data.size - 1) {
-            if (data[i] > data[i - 1] && data[i] > data[i + 1] && data[i] > threshold) {
-                if (peaks.isEmpty() || i - peaks.last() >= 5) {
-                    peaks.add(i)
-                }
-            }
-        }
-        return peaks
-    }
-}
-
-/**
- * Main function demonstrating usage with DoubleArrays.
- */
-fun main() {
-    println("=".repeat(60))
-    println("STEP NOISE CORRECTOR WITH DETRENDING")
-    println("=".repeat(60))
-
-    try {
-        // Example: Read CSV and convert to DoubleArrays
-        // Replace this with your actual data loading
-        val sampleData = DoubleArray(1000) { i ->
-            100.0 * (1 + 0.5 * sin(i / 20.0) + 0.2 * sin(i / 5.0)) +
-                    (kotlin.random.Random.nextDouble() - 0.5) * 10.0
-        }
-        // Add some artificial step noise
-        for (i in 200..250) {
-            sampleData[i] += 50.0
-        }
-        for (i in 400..420) {
-            sampleData[i] -= 30.0
-        }
-        for (i in 600..660) {
-            sampleData[i] += 40.0
-        }
-
-        val timestamps = DoubleArray(sampleData.size) { it.toDouble() }
-
-        // Process with various configurations
-        val corrector = StepNoiseCorrector(
-            detrend = true,
-            detrendMethod = "smoothing",
-            medianFilter = true,
-            medianKernel = 5,
-            filterNoise = true,
-            cutoffFreq = 0.1
-        )
-
-        val result = corrector.process(sampleData, timestamps)
-
-        println("\n" + "=".repeat(60))
-        println("Processing Complete!")
-        println("=".repeat(60))
-        println("Original data size: ${result.originalData.size}")
-        println("Final data size: ${result.finalData.size}")
-        println("Steps detected: ${result.stepPeriods.size}")
-        println("Original mean: ${result.stats.originalMean}")
-        println("Corrected mean: ${result.stats.correctedMean}")
-        if (result.stats.detrendedMean != null) {
-            println("Detrended mean: ${result.stats.detrendedMean}")
-        }
-
-    } catch (e: Exception) {
-        println("Error: ${e.message}")
-        e.printStackTrace()
     }
 }
