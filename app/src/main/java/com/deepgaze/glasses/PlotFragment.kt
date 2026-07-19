@@ -401,36 +401,23 @@ class PlotFragment : Fragment() {
         val mean = data.average()
         val std = data.std()
 
-        // Try multiple thresholds to find the best peaks
-        val multipliers = listOf(1.5, 2.0, 2.5, 3.0, 3.5, 4.0)
-        var bestPeaks = emptyList<Int>()
-        var bestScore = 0
+        // Use a dynamic threshold based on the data characteristics
+        // For blink detection, a multiplier between 2.0 and 3.0 usually works well
+        val thresholdMultiplier = 1.5
+        val threshold = mean + (thresholdMultiplier * std)
 
-        for (multiplier in multipliers) {
-            val threshold = mean + (multiplier * std)
-            val peaks = findPeaksWithThreshold(data, threshold)
+        // Find ALL peaks that exceed the threshold
+        val peaks = findPeaksWithThreshold(data, threshold)
 
-            // Score peaks: prefer finding between 3 and 30 peaks with good spacing
-            if (peaks.isNotEmpty() && peaks.size in 3..30 && peaks.size > bestScore) {
-                bestPeaks = peaks
-                bestScore = peaks.size
-                Log.d(TAG, "Threshold multiplier $multiplier found ${peaks.size} peaks")
-            }
-        }
+        Log.d(TAG, "Detected ${peaks.size} peaks with threshold: $threshold")
+        Log.d(TAG, "Mean: $mean, Std: $std")
 
-        // If no peaks found with standard thresholds, try lower threshold
-        if (bestPeaks.isEmpty()) {
-            val threshold = mean + (0.5 * std)
-            bestPeaks = findPeaksWithThreshold(data, threshold)
-            Log.d(TAG, "Using low threshold, found ${bestPeaks.size} peaks")
-        }
-
-        return bestPeaks
+        return peaks
     }
 
     private fun findPeaksWithThreshold(data: DoubleArray, threshold: Double): List<Int> {
         val peaks = mutableListOf<Int>()
-        val minDistance = 5
+        val minDistance = 3  // Minimum distance between peaks
 
         for (i in 1 until data.size - 1) {
             // Check if it's a local maximum AND exceeds threshold
@@ -588,9 +575,6 @@ class PlotFragment : Fragment() {
         options.add("📋 Copy Blink Data")
         actions.add { copyBlinkData() }
 
-        options.add("🎯 Show Only Blinks")
-        actions.add { showOnlyBlinks() }
-
         options.add("🔄 Show Raw Data")
         actions.add {
             showFilteredData = false
@@ -697,22 +681,6 @@ class PlotFragment : Fragment() {
         val dataString = blinkData.joinToString("\n")
         copyToClipboard(dataString)
         Toast.makeText(requireContext(), "Blink data copied to clipboard", Toast.LENGTH_SHORT).show()
-    }
-
-    private fun showOnlyBlinks() {
-        if (currentSpikeIndices.isEmpty()) {
-            Toast.makeText(requireContext(), "No blinks to show", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val firstBlink = currentSpikeIndices.firstOrNull() ?: return
-        val start = (firstBlink - 50).coerceAtLeast(0)
-        val end = (firstBlink + 100).coerceAtMost(allDataPoints.size)
-
-        currentStartIndex = start
-        currentEndIndex = end
-        updateChartWithFilteredData()
-        updateScrollButtons()
     }
 
     // ==================== HELPER FUNCTIONS ====================
