@@ -285,7 +285,7 @@ class PlotFragment : Fragment() {
                             cutoffFreq = 0.06,
                             filterOrder = 4,
                             window = 30,
-                            requiredStable = 30,
+                            requiredStable = 50,
                             maxIterations = 20,
                             noiseThreshold = 3.0,
                             lookAhead = 500

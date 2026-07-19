@@ -168,7 +168,7 @@ class StepNoiseCorrector(
                 // 2. Duration must be long enough (at least 20 samples)
                 // 3. Step must be at least 3x noisier than surrounding area
                 val stepRegion = result.slice(startIdx until endIdx)
-                val preStart = max(0, startIdx - 50)
+                val preStart = max(0, startIdx - requiredStable)
                 val preRegion = result.slice(preStart until startIdx)
                 val preStd = if (preRegion.isNotEmpty()) preRegion.std() else 1.0
                 val stepStd = if (stepRegion.isNotEmpty()) stepRegion.std() else 1.0
@@ -220,7 +220,7 @@ class StepNoiseCorrector(
      * Find the most prominent step with strict criteria.
      */
     private fun findMostProminentStep(data: DoubleArray): StepInfo? {
-        if (data.size < 50) return null  // Need enough data
+        if (data.size < requiredStable) return null  // Need enough data
 
         // Calculate rolling standard deviation
         val rollingStd = calculateRollingStd(data, window)
