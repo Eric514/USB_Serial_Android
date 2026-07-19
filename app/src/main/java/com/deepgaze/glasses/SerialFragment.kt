@@ -823,9 +823,6 @@ class SerialFragment : Fragment() {
         saveSerialData(data)
         saveToFile(data)
 
-        // Update counter
-        dataCounter++
-
         // Schedule batch update
         if (!isBatchUpdateScheduled) {
             isBatchUpdateScheduled = true
