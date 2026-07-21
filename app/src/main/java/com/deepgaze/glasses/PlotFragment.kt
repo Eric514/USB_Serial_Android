@@ -423,13 +423,26 @@ class PlotFragment : Fragment() {
             Triple(peakIdx, value, prominence)
         }
 
-        // Use a fixed prominence threshold (adjust based on your data)
-        // A good starting point is 10-20% of the data range
+        // Calculate data statistics for dynamic thresholds
         val dataRange = data.maxOrNull()!! - data.minOrNull()!!
-        val minProminence = dataRange * prominencethresholdmult // 10% of the data range
+        val dataMean = data.average()
+        val dataStd = data.std()
 
-        val peaks = peakInfo
-            .filter { it.third > minProminence }
+        // Flat threshold: peaks must be above this absolute value
+        // This ensures we don't detect negative or near-zero peaks
+        val minAbsoluteValue = dataMean + 0.5 * dataStd  // Peaks must be above mean + 0.5*std
+
+        // Prominence threshold: peaks must stand out from surrounding signal
+        val minProminence = dataRange * prominencethresholdmult  // 10% of the data range
+
+        // Filter peaks by both criteria
+        val filteredPeaks = peakInfo
+            .filter {
+                // Must meet BOTH conditions:
+                // 1. Peak value must be above the absolute threshold (ensures positive peaks)
+                // 2. Prominence must be above the prominence threshold
+                it.second > minAbsoluteValue && it.third > minProminence
+            }
             .map { it.first }
             .sorted()
 
@@ -437,16 +450,18 @@ class PlotFragment : Fragment() {
         val finalPeaks = mutableListOf<Int>()
         val minDistance = 5
 
-        for (peak in peaks) {
+        for (peak in filteredPeaks) {
             if (finalPeaks.isEmpty() || peak - finalPeaks.last() >= minDistance) {
                 finalPeaks.add(peak)
             }
         }
 
-        Log.d(TAG, "Found ${finalPeaks.size} peaks with prominence > $minProminence")
+        Log.d(TAG, "Found ${finalPeaks.size} peaks with prominence > $minProminence and value > $minAbsoluteValue")
+        Log.d(TAG, "Total peaks found: ${allPeaks.size}, Filtered: ${finalPeaks.size}")
 
         return finalPeaks
     }
+
     /**
      * Calculate the prominence of a peak.
      * Prominence is the minimum height difference between the peak and the highest
