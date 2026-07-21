@@ -402,7 +402,8 @@ class PlotFragment : Fragment() {
      * Detect peaks by prominence (how much a peak stands out from the surrounding signal)
      * This is similar to scipy.signal.find_peaks with prominence parameter
      */
-    val prominencethresholdmult = 0.005
+    val prominencethresholdmult = 0.008
+    val absolutevaluethreshold = 0.4
     private fun detectPositivePeaks(data: DoubleArray): List<Int> {
         if (data.size < 3) return emptyList()
 
@@ -430,7 +431,7 @@ class PlotFragment : Fragment() {
 
         // Flat threshold: peaks must be above this absolute value
         // This ensures we don't detect negative or near-zero peaks
-        val minAbsoluteValue = dataMean + 0.5 * dataStd  // Peaks must be above mean + 0.5*std
+        val minAbsoluteValue = dataMean + absolutevaluethreshold * dataStd  // Peaks must be above mean + 0.5*std
 
         // Prominence threshold: peaks must stand out from surrounding signal
         val minProminence = dataRange * prominencethresholdmult  // 10% of the data range
