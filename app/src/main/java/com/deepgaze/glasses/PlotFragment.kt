@@ -31,6 +31,8 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.math.max
+import kotlin.math.sqrt
 
 class PlotFragment : Fragment() {
     private var _binding: FragmentPlotBinding? = null
@@ -306,7 +308,7 @@ class PlotFragment : Fragment() {
                         Log.d(TAG, "Filtered data available: ${processedResult.filteredData != null}")
 
                         // Apply Savitzky-Golay filter
-                        val filtered = savitzkyGolayFilter(processedData, 41, 4)
+                        val filtered = savitzkyGolayFilter(processedData, 35, 6)
 
                         // Detect positive spikes
                         val peaks = detectPositivePeaks(filtered)
@@ -318,7 +320,7 @@ class PlotFragment : Fragment() {
                     } catch (e: Exception) {
                         Log.e(TAG, "Error in StepNoiseCorrector", e)
                         // Fallback: simple Savitzky-Golay on original data
-                        val filtered = savitzkyGolayFilter(currentData, 41, 4)
+                        val filtered = savitzkyGolayFilter(currentData, 31, 4)
                         val peaks = detectPositivePeaks(filtered)
                         Pair(filtered, peaks)
                     }
@@ -395,44 +397,113 @@ class PlotFragment : Fragment() {
         }
     }
 
+    // Add this as a class variable
+    /**
+     * Detect peaks by prominence (how much a peak stands out from the surrounding signal)
+     * This is similar to scipy.signal.find_peaks with prominence parameter
+     */
+    val prominencethresholdmult = 0.005
     private fun detectPositivePeaks(data: DoubleArray): List<Int> {
         if (data.size < 3) return emptyList()
 
-        val mean = data.average()
-        val std = data.std()
-
-        // Use a dynamic threshold based on the data characteristics
-        // For blink detection, a multiplier between 2.0 and 3.0 usually works well
-        val thresholdMultiplier = 1.5
-        val threshold = mean + (thresholdMultiplier * std)
-
-        // Find ALL peaks that exceed the threshold
-        val peaks = findPeaksWithThreshold(data, threshold)
-
-        Log.d(TAG, "Detected ${peaks.size} peaks with threshold: $threshold")
-        Log.d(TAG, "Mean: $mean, Std: $std")
-
-        return peaks
-    }
-
-    private fun findPeaksWithThreshold(data: DoubleArray, threshold: Double): List<Int> {
-        val peaks = mutableListOf<Int>()
-        val minDistance = 3  // Minimum distance between peaks
-
+        // First, find all local maxima
+        val allPeaks = mutableListOf<Int>()
         for (i in 1 until data.size - 1) {
-            // Check if it's a local maximum AND exceeds threshold
-            if (data[i] > data[i - 1] &&
-                data[i] > data[i + 1] &&
-                data[i] > threshold
-            ) {
-                // Check distance from previous peak
-                if (peaks.isEmpty() || i - peaks.last() >= minDistance) {
-                    peaks.add(i)
-                }
+            if (data[i] > data[i - 1] && data[i] > data[i + 1]) {
+                allPeaks.add(i)
             }
         }
 
-        return peaks
+        if (allPeaks.isEmpty()) return emptyList()
+
+        // Calculate prominence for each peak
+        val peakInfo = allPeaks.map { peakIdx ->
+            val prominence = calculateProminence(data, peakIdx)
+            val value = data[peakIdx]
+            Triple(peakIdx, value, prominence)
+        }
+
+        // Use a fixed prominence threshold (adjust based on your data)
+        // A good starting point is 10-20% of the data range
+        val dataRange = data.maxOrNull()!! - data.minOrNull()!!
+        val minProminence = dataRange * prominencethresholdmult // 10% of the data range
+
+        val peaks = peakInfo
+            .filter { it.third > minProminence }
+            .map { it.first }
+            .sorted()
+
+        // Apply minimum distance between peaks
+        val finalPeaks = mutableListOf<Int>()
+        val minDistance = 5
+
+        for (peak in peaks) {
+            if (finalPeaks.isEmpty() || peak - finalPeaks.last() >= minDistance) {
+                finalPeaks.add(peak)
+            }
+        }
+
+        Log.d(TAG, "Found ${finalPeaks.size} peaks with prominence > $minProminence")
+
+        return finalPeaks
+    }
+    /**
+     * Calculate the prominence of a peak.
+     * Prominence is the minimum height difference between the peak and the highest
+     * saddle point connecting it to any higher peak.
+     */
+    private fun calculateProminence(data: DoubleArray, peakIdx: Int): Double {
+        val peakValue = data[peakIdx]
+
+        // Find the left base of the peak (where the signal goes below the peak on the left side)
+        var leftBase = peakIdx
+        var leftMin = peakValue
+        for (i in peakIdx - 1 downTo 0) {
+            if (data[i] < data[i + 1]) {
+                // We're going downhill - continue
+                if (data[i] < leftMin) {
+                    leftMin = data[i]
+                }
+                leftBase = i
+            } else {
+                // We found the left base (where the signal starts going up again)
+                break
+            }
+        }
+
+        // Find the right base of the peak
+        var rightBase = peakIdx
+        var rightMin = peakValue
+        for (i in peakIdx + 1 until data.size) {
+            if (data[i] < data[i - 1]) {
+                // We're going downhill - continue
+                if (data[i] < rightMin) {
+                    rightMin = data[i]
+                }
+                rightBase = i
+            } else {
+                // We found the right base (where the signal starts going up again)
+                break
+            }
+        }
+
+        // Find the higher of the two bases (the saddle point)
+        val leftBaseValue = data[leftBase]
+        val rightBaseValue = data[rightBase]
+        val saddleHeight = max(leftBaseValue, rightBaseValue)
+
+        // Prominence = peak height - saddle height
+        val prominence = peakValue - saddleHeight
+
+        return max(prominence, 0.0) // Ensure non-negative
+    }
+
+    // Helper function for standard deviation
+    private fun List<Double>.std(): Double {
+        if (isEmpty()) return 0.0
+        val mean = average()
+        val variance = map { (it - mean) * (it - mean) }.average()
+        return sqrt(variance)
     }
 
     private fun savitzkyGolayFilter(data: DoubleArray, windowLength: Int, polyorder: Int = 3): DoubleArray {

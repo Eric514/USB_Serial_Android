@@ -173,7 +173,7 @@ class StepNoiseCorrector(
                 val preStd = if (preRegion.isNotEmpty()) preRegion.std() else 1.0
                 val stepStd = if (stepRegion.isNotEmpty()) stepRegion.std() else 1.0
 
-                val isSignificant = abs(stepAmplitude) > 2.0 &&  // Large enough amplitude
+                val isSignificant = abs(stepAmplitude) > 3.0 &&  // Large enough amplitude
                         (endIdx - startIdx) > 20 &&   // Long enough duration
                         stepStd > preStd * 3.0        // Noisier than surrounding
 
@@ -275,8 +275,8 @@ class StepNoiseCorrector(
                     val preStd = if (preWindow.isNotEmpty()) preWindow.std() else 0.0
 
                     // ✅ STRICT SCORING CRITERIA
-                    val isValidStep = stepAmplitude > 2.0 &&           // Large amplitude
-                            stepDuration > 20 &&              // Long duration
+                    val isValidStep = stepAmplitude > 3.0 &&           // Large amplitude
+                            stepDuration > 10 &&              // Long duration
                             stepStd > preStd * 3.0 &&        // Much noisier
                             stepAmplitude > preStd * 2.0    // Amplitude > 2x noise
 
